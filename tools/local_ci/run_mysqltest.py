@@ -226,7 +226,7 @@ def format_error(error):
 # --------------------------------------------------------------------------
 # execution
 # --------------------------------------------------------------------------
-def connect(host, port, user, password):
+def connect(host, port, user, password, database):
     import pymysql
 
     return pymysql.connect(
@@ -234,17 +234,18 @@ def connect(host, port, user, password):
         port=port,
         user=user,
         password=password,
+        database=database,
         charset="utf8mb4",
         autocommit=True,
         cursorclass=pymysql.cursors.Cursor,
     )
 
 
-def run_case(case_id, test_path, result_path, host, port, user, password):
+def run_case(case_id, test_path, result_path, host, port, user, password, database):
     transcript = []
     variables = {}
     actions = parse_test(test_path, variables)
-    connection = connect(host, port, user, password)
+    connection = connect(host, port, user, password, database)
     try:
         with connection.cursor() as cursor:
             for kind, payload in actions:
@@ -316,6 +317,8 @@ def main(argv=None):
     parser.add_argument("--port", type=int, default=int(os.environ.get("SEEKDB_PORT", "2881")))
     parser.add_argument("--user", default=os.environ.get("SEEKDB_USER", "root"))
     parser.add_argument("--password", default=os.environ.get("SEEKDB_PASSWORD", ""))
+    parser.add_argument("--database", default=os.environ.get("SEEKDB_DATABASE", "test"),
+                        help="default database of the session, the reference runner uses 'test'")
     args = parser.parse_args(argv)
 
     suite_dir = SUITE_ROOT / args.suite
@@ -346,6 +349,7 @@ def main(argv=None):
                 args.port,
                 args.user,
                 args.password,
+                args.database,
             )
         except Exception as exc:  # noqa: BLE001
             detail = "".join(
