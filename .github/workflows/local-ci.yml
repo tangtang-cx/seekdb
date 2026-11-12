@@ -152,13 +152,20 @@ jobs:
           for i in $(seq 1 30); do
             if curl -s -o /dev/null http://127.0.0.1:8000/healthz; then
               echo "mock ai service is up"
-              exit 0
+              break
             fi
             sleep 1
           done
-          echo "mock ai service did not come up" >&2
-          cat /tmp/mock_ai.log >&2 || true
-          exit 1
+          echo "--- smoke test /api/generate ---"
+          curl -s -X POST -H 'Content-Type: application/json' \
+            -d '{"model":"qwen2.5","prompt":"hello"}' \
+            http://127.0.0.1:8000/api/generate | head -c 300
+          echo
+          echo "--- smoke test /api/embed ---"
+          curl -s -X POST -H 'Content-Type: application/json' \
+            -d '{"model":"nomic","input":["hello"]}' \
+            http://127.0.0.1:8000/api/embed | head -c 120
+          echo
 
       - name: Start observer
         shell: bash
@@ -187,6 +194,7 @@ jobs:
           path: |
             /tmp/seekdb_local_ci
             /tmp/seekdb.log
+            /tmp/mock_ai.log
             /tmp/seekdb_home/log
           retention-days: 5
           if-no-files-found: ignore
