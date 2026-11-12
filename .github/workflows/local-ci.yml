@@ -188,6 +188,9 @@ jobs:
           call DBMS_AI_SERVICE.ALTER_AI_MODEL_ENDPOINT('diag_ollama_ep','{\"provider\":\"Ollama\"}');
           select ENDPOINT_NAME, AI_MODEL_NAME, URL, ACCESS_KEY, PROVIDER, REQUEST_MODEL_NAME, PARAMETERS, SCOPE from oceanbase.DBA_OB_AI_MODEL_ENDPOINTS where ENDPOINT_NAME='diag_ollama_ep';
           select ai_complete('diag_ollama','hello') as r2;
+          select @@session.enable_file_sql as file_sql_default;
+          set session enable_file_sql = on;
+          select @@session.enable_file_sql as file_sql_on;
           " 2>&1 | tail -25
 
       - name: Run mysqltest suite
