@@ -122,13 +122,6 @@ def parse_test(path, variables, source_stack=None):
 
         if stripped.lower().startswith("connection "):
             continue
-        lowered = stripped.lower()
-        if lowered.startswith("connect ") or lowered.startswith("connect("):
-            # A connection switch, not a statement: the reference transcript
-            # does not contain it either.
-            continue
-        if lowered.startswith("disconnect "):
-            continue
         if stripped.lower().startswith("let "):
             body = stripped[4:].strip()
             if "=" in body:
