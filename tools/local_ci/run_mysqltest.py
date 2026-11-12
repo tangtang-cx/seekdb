@@ -59,6 +59,31 @@ def expand(text, variables):
     return re.sub(r"\$(\w+)", repl, text)
 
 
+def _resolve_source(target):
+    """Locate a sourced include file.
+
+    The suites refer to the include files either relative to the mysql_test
+    root (``include/foo.inc``) or relative to the directory that holds it
+    (``mysql_test/include/foo.inc``).
+    """
+    root = MYSQL_TEST_ROOT.resolve()
+    candidates = [
+        MYSQL_TEST_ROOT / target,
+        MYSQL_TEST_ROOT.parent / target,
+        MYSQL_TEST_ROOT / "include" / Path(target).name,
+    ]
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        if root not in resolved.parents and resolved != root:
+            continue
+        if resolved.is_file():
+            return resolved
+    return None
+
+
 def parse_test(path, variables, source_stack=None):
     """Return the list of statements and the echo lines for one .test file."""
     actions = []
@@ -99,10 +124,8 @@ def parse_test(path, variables, source_stack=None):
                 pass
             elif directive.startswith("source "):
                 target = directive[7:].strip()
-                source_path = (MYSQL_TEST_ROOT / target).resolve()
-                if not str(source_path).startswith(str(MYSQL_TEST_ROOT.resolve())):
-                    raise CaseError("source escapes the mysql_test root: %s" % target)
-                if not source_path.is_file():
+                source_path = _resolve_source(target)
+                if source_path is None:
                     raise CaseError("missing source file: %s" % target)
                 sub = parse_test(source_path, variables)
                 actions.extend(sub)
