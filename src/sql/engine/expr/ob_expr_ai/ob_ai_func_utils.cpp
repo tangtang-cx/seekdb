@@ -1371,7 +1371,7 @@ int ObAIFuncModel::call_completion_vector(ObArray<ObString> &prompts, ObJsonObje
   return ret;
 }
 
-int ObAIFuncModel::call_dense_embedding(ObString &content, ObJsonObject *config, ObString &result, int64_t validate_dimension)
+int ObAIFuncModel::call_dense_embedding(ObString &content, ObJsonObject *config, ObString &result)
 {
   int ret = OB_SUCCESS;
   ObArray<ObString> contents;
@@ -1383,7 +1383,7 @@ int ObAIFuncModel::call_dense_embedding(ObString &content, ObJsonObject *config,
     ret = OB_INVALID_ARGUMENT;
     LOG_USER_ERROR(OB_INVALID_ARGUMENT, "ai_embed, info type is not dense embedding");
   } else if (OB_FAIL(contents.push_back(content))) {
-  } else if (OB_FAIL(call_dense_embedding_vector_v2(contents, config, results, validate_dimension))) {
+  } else if (OB_FAIL(call_dense_embedding_vector_v2(contents, config, results))) {
   } else if (results.count() != 1) {
     ret = OB_ERR_UNEXPECTED;
   } else {
@@ -1459,7 +1459,7 @@ static bool ob_is_valid_embedding(ObIJsonBase *node)
   return valid;
 }
 
-int ObAIFuncModel::call_dense_embedding_vector_v2(ObArray<ObString> &content, ObJsonObject *config, ObArray<ObString> &results, int64_t validate_dimension)
+int ObAIFuncModel::call_dense_embedding_vector_v2(ObArray<ObString> &content, ObJsonObject *config, ObArray<ObString> &results)
 {
   int ret = OB_SUCCESS;
   ObArray<ObString> headers;
@@ -1469,12 +1469,15 @@ int ObAIFuncModel::call_dense_embedding_vector_v2(ObArray<ObString> &content, Ob
   ObAIFuncIEmbed *embed_provider = nullptr;
   ObString result_str;
   ObAIFuncClient client;
+  int64_t dimension = 0;
   if (OB_NOT_NULL(config)) {
     ObJsonNode *dimension_node = config->get_value("dimensions");
     if (OB_ISNULL(dimension_node)) {
       // do nothing
     } else if (dimension_node->json_type() != ObJsonNodeType::J_INT) {
       ret = OB_ERR_UNEXPECTED;
+    } else {
+      dimension = static_cast<ObJsonInt *>(dimension_node)->get_int();
     }
   }
   
@@ -1502,7 +1505,7 @@ int ObAIFuncModel::call_dense_embedding_vector_v2(ObArray<ObString> &content, Ob
         } else if (!ob_is_valid_embedding(j_base)) {
           ret = OB_INVALID_ARGUMENT;
           LOG_USER_ERROR(OB_INVALID_ARGUMENT, "ai_embed, result is not a valid embedding");
-        } else if (validate_dimension > 0 && static_cast<ObJsonArray *>(j_base)->element_count() != validate_dimension) {
+        } else if (dimension > 0 && static_cast<ObJsonArray *>(j_base)->element_count() != dimension) {
           ret = OB_INVALID_ARGUMENT;
           LOG_USER_ERROR(OB_INVALID_ARGUMENT, "ai_embed, result dimension is not equal to dimension");
         } else if (OB_FAIL(ObAIFuncJsonUtils::print_json_to_str(*allocator_, j_base, result_str))) {
