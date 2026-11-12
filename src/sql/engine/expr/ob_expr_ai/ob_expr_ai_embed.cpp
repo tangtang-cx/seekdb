@@ -220,12 +220,18 @@ int ObExprAIEmbed::eval_batch_ai_embed(const ObExpr &expr,
   bool dim_set = false;
   bool can_merge = true;
 
+  // A constant argument is evaluated once and its datum vector holds a single
+  // element, so it is read through the first slot for every row.
+  const bool model_is_batch = expr.args_[MODEL_IDX]->is_batch_result();
+  const bool content_is_batch = expr.args_[CONTENT_IDX]->is_batch_result();
+  const bool dim_is_batch = has_dim && expr.args_[DIM_IDX]->is_batch_result();
+
   for (int64_t i = 0; OB_SUCC(ret) && i < size; i++) {
     if (skip.at(i) || eval_flags.at(i)) {
       continue;
     }
-    ObDatum *model_datum = model_datum_vector.at(i);
-    ObDatum *content_datum = content_datum_vector.at(i);
+    ObDatum *model_datum = model_datum_vector.at(model_is_batch ? i : 0);
+    ObDatum *content_datum = content_datum_vector.at(content_is_batch ? i : 0);
     if (OB_ISNULL(model_datum) || OB_ISNULL(content_datum)) {
       continue;
     }
@@ -244,7 +250,7 @@ int ObExprAIEmbed::eval_batch_ai_embed(const ObExpr &expr,
       break;
     }
     if (has_dim) {
-      ObDatum *dim_datum = dim_datum_vector.at(i);
+      ObDatum *dim_datum = dim_datum_vector.at(dim_is_batch ? i : 0);
       if (OB_ISNULL(dim_datum) || dim_datum->is_null()) {
         can_merge = false;
         break;
