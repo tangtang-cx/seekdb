@@ -247,10 +247,7 @@ int ObAiServiceProxy::drop_ai_model_endpoint(ObMySQLTransaction &trans, const Ob
       OB_ALL_AI_MODEL_ENDPOINT_TNAME))) {
   } else if (OB_FAIL(sql_append_hex_escape_str(name, sql))) {
   } else if (OB_FAIL(trans.write(sql.ptr(), affected_rows))) {
-  } else if (0 == affected_rows) {
-    ret = OB_AI_FUNC_ENDPOINT_NOT_FOUND;
-    LOG_USER_ERROR(OB_AI_FUNC_ENDPOINT_NOT_FOUND, name.length(), name.ptr());
-  } else if (1 != affected_rows) {
+  } else if (1 < affected_rows) {
     ret = OB_ERR_UNEXPECTED;
   }
   return ret;
