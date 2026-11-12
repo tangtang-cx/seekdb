@@ -59,6 +59,31 @@ def expand(text, variables):
     return re.sub(r"\$(\w+)", repl, text)
 
 
+def _resolve_source(target):
+    """Locate a sourced include file.
+
+    The suites refer to the include files either relative to the mysql_test
+    root (``include/foo.inc``) or relative to the directory that holds it
+    (``mysql_test/include/foo.inc``).
+    """
+    root = MYSQL_TEST_ROOT.resolve()
+    candidates = [
+        MYSQL_TEST_ROOT / target,
+        MYSQL_TEST_ROOT.parent / target,
+        MYSQL_TEST_ROOT / "include" / Path(target).name,
+    ]
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        if root not in resolved.parents and resolved != root:
+            continue
+        if resolved.is_file():
+            return resolved
+    return None
+
+
 def parse_test(path, variables, source_stack=None):
     """Return the list of statements and the echo lines for one .test file."""
     actions = []
@@ -99,10 +124,8 @@ def parse_test(path, variables, source_stack=None):
                 pass
             elif directive.startswith("source "):
                 target = directive[7:].strip()
-                source_path = (MYSQL_TEST_ROOT / target).resolve()
-                if not str(source_path).startswith(str(MYSQL_TEST_ROOT.resolve())):
-                    raise CaseError("source escapes the mysql_test root: %s" % target)
-                if not source_path.is_file():
+                source_path = _resolve_source(target)
+                if source_path is None:
                     raise CaseError("missing source file: %s" % target)
                 sub = parse_test(source_path, variables)
                 actions.extend(sub)
@@ -121,6 +144,13 @@ def parse_test(path, variables, source_stack=None):
             continue
 
         if stripped.lower().startswith("connection "):
+            continue
+        lowered = stripped.lower()
+        if lowered.startswith("connect ") or lowered.startswith("connect("):
+            # A connection switch, not a statement: the reference transcript
+            # does not contain it either.
+            continue
+        if lowered.startswith("disconnect "):
             continue
         if stripped.lower().startswith("let "):
             body = stripped[4:].strip()
@@ -196,7 +226,7 @@ def format_error(error):
 # --------------------------------------------------------------------------
 # execution
 # --------------------------------------------------------------------------
-def connect(host, port, user, password):
+def connect(host, port, user, password, database):
     import pymysql
 
     return pymysql.connect(
@@ -204,17 +234,18 @@ def connect(host, port, user, password):
         port=port,
         user=user,
         password=password,
+        database=database,
         charset="utf8mb4",
         autocommit=True,
         cursorclass=pymysql.cursors.Cursor,
     )
 
 
-def run_case(case_id, test_path, result_path, host, port, user, password):
+def run_case(case_id, test_path, result_path, host, port, user, password, database):
     transcript = []
     variables = {}
     actions = parse_test(test_path, variables)
-    connection = connect(host, port, user, password)
+    connection = connect(host, port, user, password, database)
     try:
         with connection.cursor() as cursor:
             for kind, payload in actions:
@@ -286,6 +317,8 @@ def main(argv=None):
     parser.add_argument("--port", type=int, default=int(os.environ.get("SEEKDB_PORT", "2881")))
     parser.add_argument("--user", default=os.environ.get("SEEKDB_USER", "root"))
     parser.add_argument("--password", default=os.environ.get("SEEKDB_PASSWORD", ""))
+    parser.add_argument("--database", default=os.environ.get("SEEKDB_DATABASE", "test"),
+                        help="default database of the session, the reference runner uses 'test'")
     args = parser.parse_args(argv)
 
     suite_dir = SUITE_ROOT / args.suite
@@ -316,6 +349,7 @@ def main(argv=None):
                 args.port,
                 args.user,
                 args.password,
+                args.database,
             )
         except Exception as exc:  # noqa: BLE001
             detail = "".join(

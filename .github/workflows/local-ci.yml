@@ -16,9 +16,13 @@ on:
         required: false
         default: ""
       bench:
-        description: "also run the fulltext benchmark (1 = yes)"
+        description: "also run the fulltext benchmark (0 = no)"
         required: false
-        default: "0"
+        default: "1"
+      cases:
+        description: "mysqltest cases to replay (space separated)"
+        required: false
+        default: "ai_function_enhancement ai_prompt"
   push:
     branches:
       - "ci/local-build"
@@ -166,9 +170,14 @@ jobs:
         shell: bash
         env:
           SUITE: ${{ inputs.suite || 'ai_function' }}
+          CASES: ${{ inputs.cases || 'ai_function_enhancement ai_prompt' }}
         run: |
           set -euo pipefail
-          python3 tools/local_ci/run_mysqltest.py --suite "$SUITE"
+          arguments=(--suite "$SUITE")
+          for case_id in $CASES; do
+            arguments+=(--case "$case_id")
+          done
+          python3 tools/local_ci/run_mysqltest.py "${arguments[@]}"
 
       - name: Upload logs
         if: always()
@@ -185,7 +194,7 @@ jobs:
   fts-bench:
     name: fulltext benchmark
     needs: build
-    if: ${{ always() && needs.build.result == 'success' && inputs.bench != '0' }}
+    if: ${{ always() && needs.build.result == 'success' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 180
     steps:
