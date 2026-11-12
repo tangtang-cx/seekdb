@@ -173,6 +173,19 @@ jobs:
           set -euo pipefail
           bash tools/local_ci/start_observer.sh observer
 
+      - name: Diagnose the ollama completion
+        if: always()
+        shell: bash
+        run: |
+          mysql -h127.0.0.1 -P2881 -uroot --default-character-set=utf8mb4 -e "
+          create database if not exists diag;
+          use diag;
+          call DBMS_AI_SERVICE.CREATE_AI_MODEL('diag_ollama','{\"type\":\"completion\",\"model_name\":\"qwen2.5\"}');
+          call DBMS_AI_SERVICE.CREATE_AI_MODEL_ENDPOINT('diag_ollama_ep','{\"ai_model_name\":\"diag_ollama\",\"scope\":\"all\",\"url\":\"http://0.0.0.0:8000/api/generate\",\"access_key\":\"\",\"provider\":\"ollama\"}');
+          select ENDPOINT_NAME, AI_MODEL_NAME, URL, PROVIDER from oceanbase.DBA_OB_AI_MODEL_ENDPOINTS where ENDPOINT_NAME='diag_ollama_ep';
+          select ai_complete('diag_ollama','hello') as r;
+          " 2>&1 | tail -25
+
       - name: Run mysqltest suite
         shell: bash
         env:
