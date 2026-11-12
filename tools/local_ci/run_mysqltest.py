@@ -174,11 +174,23 @@ def render(statement, columns, rows, error=None):
     out = []
     if statement.result_log:
         out.append(statement.text)
-        if error is None and columns:
-            out.append("\t".join(str(c) for c in columns))
-            for row in rows:
-                out.append("\t".join(format_value(v) for v in row))
+        if error is None:
+            if columns:
+                out.append("\t".join(str(c) for c in columns))
+                for row in rows:
+                    out.append("\t".join(format_value(v) for v in row))
+        else:
+            out.append(format_error(error))
     return out
+
+
+def format_error(error):
+    """Render an error the way the reference mysqltest transcript does."""
+    args = getattr(error, "args", ())
+    errno = args[0] if args and isinstance(args[0], int) else 0
+    message = args[1] if len(args) > 1 and isinstance(args[1], str) else str(error)
+    sqlstate = getattr(error, "sqlstate", None) or "HY000"
+    return "ERROR %s: %s" % (sqlstate, message)
 
 
 # --------------------------------------------------------------------------
@@ -248,12 +260,15 @@ def run_case(case_id, test_path, result_path, host, port, user, password):
 
 
 def normalize(lines):
-    return [line.rstrip(" \t") for line in lines]
+    # The reference transcript keeps the indentation of the echoed statement
+    # of a multi line query in a slightly different way than the reader does,
+    # so the leading blanks are not significant for the comparison.
+    return [line.strip() for line in lines]
 
 
 def compare(expected_path, actual_lines):
     expected = expected_path.read_text(encoding="utf-8").splitlines()
-    expected = [line.rstrip(" \t") for line in expected]
+    expected = [line.strip() for line in expected]
     actual = normalize(actual_lines)
     if expected == actual:
         return None
