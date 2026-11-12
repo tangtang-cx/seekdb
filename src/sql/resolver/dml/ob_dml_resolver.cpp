@@ -2712,6 +2712,13 @@ int ObDMLResolver::resolve_table(const ParseNode &parse_tree,
         }
         break;
       }
+      case T_READ_CSV_EXPRESSION: {
+        if (OB_ISNULL(session_info_)) {
+          ret = OB_INVALID_ARGUMENT;
+        } else if (OB_FAIL(resolve_read_csv_item(*table_node, table_item))) {
+        }
+        break;
+      }
       case T_HYBRID_SEARCH_EXPRESSION: {
         if (OB_ISNULL(session_info_)) {
           ret = OB_INVALID_ARGUMENT;
@@ -3919,6 +3926,30 @@ int ObDMLResolver::resolve_json_table_item(const ParseNode &parse_tree, TableIte
   } else if (OB_FAIL(json_table_infos_.push_back(root_col_def))) {
   } else if (OB_FAIL(resolve_json_table_column_item(*chil_col_node, item,
                                                     root_col_def, -1, id, cur_column_id))) {
+  }
+  return ret;
+}
+
+int ObDMLResolver::resolve_read_csv_item(const ParseNode &parse_tree,
+                                         TableItem *&table_item)
+{
+  int ret = OB_SUCCESS;
+  ObObj var_obj;
+  bool enabled = false;
+  table_item = NULL;
+  UNUSED(parse_tree);
+  if (OB_ISNULL(session_info_) || OB_ISNULL(allocator_) || OB_ISNULL(get_stmt())) {
+    ret = OB_NOT_INIT;
+    LOG_WARN("session info, allocator or stmt is null", K(ret));
+  } else if (OB_FAIL(session_info_->get_sys_variable(SYS_VAR_ENABLE_FILE_SQL, var_obj))) {
+    LOG_WARN("failed to get enable_file_sql", K(ret));
+  } else if (FALSE_IT(enabled = var_obj.get_bool())) {
+  } else if (!enabled) {
+    ret = OB_NOT_SUPPORTED;
+    LOG_USER_ERROR(OB_NOT_SUPPORTED, "read_csv(), set enable_file_sql = ON to use it");
+  } else {
+    ret = OB_NOT_SUPPORTED;
+    LOG_USER_ERROR(OB_NOT_SUPPORTED, "read_csv(), local file scan is not supported yet");
   }
   return ret;
 }
