@@ -1,0 +1,85 @@
+name: FTS baseline and candidate validation
+on:
+  push:
+    branches: [ci/fts-validation-20261112]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 330
+    env:
+      BASELINE: 5bce9e06d1281347ad61344e4b01fab9158c58a2
+      CANDIDATE: 135bdbb4261b32895488a254bb837708c11d4a2f
+      CCACHE_DIR: /home/runner/.cache/ccache
+      CCACHE_MAXSIZE: 3G
+    steps:
+      - name: Free build disk
+        uses: insightsengineering/disk-space-reclaimer@v1
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
+          docker-images: true
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BASELINE }}
+          fetch-depth: 0
+      - name: Install build and test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git wget curl rpm rpm2cpio cpio make build-essential binutils m4 libtool-bin libncurses5 libncurses-dev libaio-dev python3 python3-pip perl ccache mysql-client
+          python3 -m pip install pymysql PyYAML
+      - uses: actions/cache@v4
+        with:
+          path: deps/3rd
+          key: ${{ runner.os }}-ob-deps-${{ hashFiles('deps/init/oceanbase.el9.x86_64.deps') }}
+      - uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/ccache
+          key: fts-ccache-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            fts-ccache-
+            ccache-
+      - uses: ./.github/actions/setup-rust
+      - name: Prepare validation harness
+        run: |
+          mkdir -p "$RUNNER_TEMP/fts-results"
+          git show "$GITHUB_SHA:.github/script/fts_validate.py" > "$RUNNER_TEMP/fts_validate.py"
+          git rev-parse HEAD > "$RUNNER_TEMP/fts-results/baseline-sha.txt"
+          uname -a > "$RUNNER_TEMP/fts-results/machine.txt"
+          lscpu >> "$RUNNER_TEMP/fts-results/machine.txt"
+          free -h >> "$RUNNER_TEMP/fts-results/machine.txt"
+      - name: Initialize and compile official baseline
+        run: |
+          set -euo pipefail
+          ./build.sh release --init
+          cmake -S . -B build_release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          make -C build_release -j"$(nproc)" seekdb 2>&1 | tee "$RUNNER_TEMP/fts-results/baseline-build.log"
+          test -x build_release/src/observer/seekdb
+          test -x deps/3rd/u01/obclient/bin/mysqltest
+      - name: Baseline correctness and performance
+        run: python3 "$RUNNER_TEMP/fts_validate.py" baseline
+      - name: Switch to candidate and rebuild
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          test -x build_release/src/observer/seekdb
+          git checkout --detach "$CANDIDATE"
+          git rev-parse HEAD > "$RUNNER_TEMP/fts-results/candidate-sha.txt"
+          make -C build_release -j"$(nproc)" seekdb 2>&1 | tee "$RUNNER_TEMP/fts-results/candidate-build.log"
+      - name: Candidate correctness and performance
+        if: ${{ !cancelled() }}
+        run: python3 "$RUNNER_TEMP/fts_validate.py" candidate
+      - name: Upload complete validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fts-baseline-candidate-evidence
+          path: ${{ runner.temp }}/fts-results
+          retention-days: 14
+          if-no-files-found: error
