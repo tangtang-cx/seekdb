@@ -15,6 +15,10 @@ on:
         description: "mysqltest suite to replay (empty = build only)"
         required: false
         default: ""
+      bench:
+        description: "also run the fulltext benchmark (1 = yes)"
+        required: false
+        default: "0"
   push:
     branches:
       - "ci/local-build"
@@ -195,5 +199,80 @@ jobs:
         with:
           name: mysqltest-logs
           path: /tmp/seekdb_local_ci
+          retention-days: 5
+          if-no-files-found: ignore
+
+  fts-bench:
+    name: fulltext benchmark
+    needs: build
+    if: ${{ always() && needs.build.result == 'success' && inputs.bench == '1' }}
+    runs-on: ubuntu-22.04-16-core
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'competition/seekdb-2026' }}
+          fetch-depth: 1
+
+      - name: Install mysql client
+        shell: bash
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get update
+          sudo apt-get install -y mysql-client python3
+
+      - name: Download observer
+        uses: actions/download-artifact@v4
+        with:
+          name: seekdb-observer
+          path: observer
+
+      - name: Start observer
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/seekdb_home /tmp/seekdb_data /tmp/seekdb_redo
+          install -m 0755 observer/seekdb /usr/local/bin/seekdb
+          install -m 0755 observer/observer /usr/local/bin/observer
+          cat > /tmp/seekdb_home.conf <<'EOF'
+          observer_ip: 127.0.0.1
+          observer_port: 2881
+          data_dir: /tmp/seekdb_data
+          redo_dir: /tmp/seekdb_redo
+          tenant_cpu_limit: 8
+          memory_limit: 16G
+          log_level: ERROR
+          enable_syslog_recycle: false
+          EOF
+          nohup /usr/local/bin/seekdb -f /tmp/seekdb_home.conf > /tmp/seekdb.log 2>&1 &
+          for i in $(seq 1 180); do
+            if mysqladmin --protocol=tcp -h127.0.0.1 -P2881 -uroot ping >/dev/null 2>&1; then
+              echo "observer is up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "observer did not come up" >&2
+          tail -80 /tmp/seekdb.log >&2 || true
+          exit 1
+
+      - name: Run fulltext benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          export MYSQL='mysql -h127.0.0.1 -P2881 -uroot -N -s --default-character-set=utf8mb4'
+          export MYSQL_VERBOSE='mysql -h127.0.0.1 -P2881 -uroot --default-character-set=utf8mb4'
+          REPORT_FILE=/tmp/fts-bench-report.txt
+          LABEL=local ROWS=20000 BATCH=500 ROUNDS=3000 QUERY_ROUNDS=200 \
+            SAMPLES=3 WARMUP=30 SKIP_LOAD=0 OUTPUT="$REPORT_FILE" \
+            bash tools/benchmark/fts_large_bench.sh
+          python3 tools/benchmark/fts_large_bench_score.py "$REPORT_FILE" --json
+
+      - name: Upload benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fts-bench-report
+          path: /tmp/fts-bench-report.txt
           retention-days: 5
           if-no-files-found: ignore
