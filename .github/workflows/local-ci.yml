@@ -37,7 +37,7 @@ env:
 jobs:
   build:
     name: build observer
-    runs-on: ubuntu-22.04-16-core
+    runs-on: ubuntu-22.04
     timeout-minutes: 330
     steps:
       - name: Free disk space
@@ -117,7 +117,7 @@ jobs:
     name: mysqltest ${{ inputs.suite || 'ai_function' }}
     needs: build
     if: ${{ always() && needs.build.result == 'success' }}
-    runs-on: ubuntu-22.04-16-core
+    runs-on: ubuntu-22.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -206,7 +206,7 @@ jobs:
     name: fulltext benchmark
     needs: build
     if: ${{ always() && needs.build.result == 'success' && inputs.bench == '1' }}
-    runs-on: ubuntu-22.04-16-core
+    runs-on: ubuntu-22.04
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
