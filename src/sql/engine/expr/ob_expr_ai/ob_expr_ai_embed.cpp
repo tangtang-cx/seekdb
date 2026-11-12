@@ -27,6 +27,11 @@ namespace oceanbase
 {
 namespace sql 
 {
+
+// The dimension of an embedding when the caller does not ask for a specific
+// one.
+static constexpr int64_t OB_AI_DEFAULT_EMBED_DIMENSION = 768;
+
 ObExprAIEmbed::ObExprAIEmbed(common::ObIAllocator &alloc)
     : ObFuncExprOperator(alloc, 
                         T_FUN_SYS_AI_EMBED, 
@@ -108,7 +113,10 @@ int ObExprAIEmbed::eval_ai_embed(const ObExpr &expr, ObEvalCtx &ctx, ObDatum &re
       LOG_USER_ERROR(OB_INVALID_ARGUMENT, "ai_embed, model id or input is empty");
       res.set_null();
     }
-    int64_t dim = 0;
+    int64_t dim = OB_AI_DEFAULT_EMBED_DIMENSION;
+    // Only a dimension that the caller asked for has to be matched by the
+    // answer, the default one is a hint for the model.
+    int64_t validate_dim = 0;
     ObJsonInt *dim_json = nullptr;
     ObJsonObject *config = nullptr;
     if (OB_FAIL(ret)) {
@@ -118,7 +126,13 @@ int ObExprAIEmbed::eval_ai_embed(const ObExpr &expr, ObEvalCtx &ctx, ObDatum &re
         ret = OB_INVALID_ARGUMENT;
         LOG_USER_ERROR(OB_INVALID_ARGUMENT, "ai_embed, dimension parameter must be a positive integer");
         res.set_null();
-      } else if (OB_FAIL(ObAIFuncJsonUtils::get_json_object(temp_allocator, config))) {
+      } else {
+        validate_dim = dim;
+      }
+    }
+    if (OB_SUCC(ret)) {
+      // The dimension is always part of the request.
+      if (OB_FAIL(ObAIFuncJsonUtils::get_json_object(temp_allocator, config))) {
       } else if (OB_FAIL(ObAIFuncJsonUtils::get_json_int(temp_allocator, dim, dim_json))) {
       } else if (OB_FAIL(config->add("dimensions", dim_json))) {
       }
@@ -132,7 +146,7 @@ int ObExprAIEmbed::eval_ai_embed(const ObExpr &expr, ObEvalCtx &ctx, ObDatum &re
     } else {
       ObAIFuncModel model(temp_allocator, *info, *endpoint_info);
       ObString result;
-      if (OB_FAIL(model.call_dense_embedding(content, config, result))) {
+      if (OB_FAIL(model.call_dense_embedding(content, config, result, validate_dim))) {
       } else if (OB_FAIL(ObAIFuncUtils::set_string_result(expr, ctx, res, result))) {
       }
     }
@@ -300,6 +314,10 @@ int ObExprAIEmbed::eval_batch_ai_embed(const ObExpr &expr,
     ObJsonObject *config = nullptr;
     ObJsonInt *dim_json = nullptr;
     ObArray<ObString> results;
+    // Only a dimension that the caller asked for has to be matched by the
+    // answer, the default one is a hint for the model.
+    const int64_t validate_dim = dim_set ? dim : 0;
+    const int64_t send_dim = dim_set ? dim : OB_AI_DEFAULT_EMBED_DIMENSION;
     if (dim_set && dim <= 0) {
       ret = OB_INVALID_ARGUMENT;
       LOG_USER_ERROR(OB_INVALID_ARGUMENT, "ai_embed, dimension parameter must be a positive integer");
@@ -311,13 +329,13 @@ int ObExprAIEmbed::eval_batch_ai_embed(const ObExpr &expr,
       ret = OB_ERR_UNEXPECTED;
     } else if (OB_FAIL(endpoint_resolver->resolve_by_model_name(
                    model_id, temp_allocator, resolved_endpoint))) {
-    } else if (dim_set && OB_FAIL(ObAIFuncJsonUtils::get_json_object(temp_allocator, config))) {
-    } else if (dim_set && OB_FAIL(ObAIFuncJsonUtils::get_json_int(temp_allocator, dim, dim_json))) {
-    } else if (dim_set && OB_FAIL(config->add("dimensions", dim_json))) {
+    } else if (OB_FAIL(ObAIFuncJsonUtils::get_json_object(temp_allocator, config))) {
+    } else if (OB_FAIL(ObAIFuncJsonUtils::get_json_int(temp_allocator, send_dim, dim_json))) {
+    } else if (OB_FAIL(config->add("dimensions", dim_json))) {
     } else {
       ObAIFuncModel model(temp_allocator, *info, *endpoint_info);
       // One request carries all the inputs of the batch.
-      if (OB_FAIL(model.call_dense_embedding_vector_v2(contents, config, results))) {
+      if (OB_FAIL(model.call_dense_embedding_vector_v2(contents, config, results, validate_dim))) {
       } else if (results.count() != contents.count()) {
         ret = OB_ERR_UNEXPECTED;
       } else {
