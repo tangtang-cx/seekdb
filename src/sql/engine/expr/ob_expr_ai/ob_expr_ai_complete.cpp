@@ -156,6 +156,11 @@ int ObExprAIComplete::eval_ai_complete(const ObExpr &expr,
       ObAIFuncModel model(temp_allocator, *info, *endpoint_info);
       ObString result;
       if (OB_FAIL(model.call_completion(prompt, config, result))) {
+      } else if (result.empty()) {
+        // An empty answer is not a usable completion.
+        ret = OB_ERR_UNEXPECTED;
+        LOG_USER_ERROR(OB_ERR_UNEXPECTED, "ai_complete, the model returned an empty answer");
+        res.set_null();
       } else if (OB_FAIL(ObAIFuncUtils::set_string_result(expr, ctx, res, result))) {
       }
     }
