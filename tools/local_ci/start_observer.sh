@@ -22,7 +22,7 @@ fi
 
 nohup /usr/local/bin/seekdb --nodaemon --port "$PORT" \
   --base-dir "$BASE_DIR" --data-dir "$DATA_DIR" --redo-dir "$REDO_DIR" \
-  --log-level ERROR > /tmp/seekdb.log 2>&1 &
+  --log-level WARN > /tmp/seekdb.log 2>&1 &
 
 if ! python3 - "$PORT" <<'PY'
 import sys

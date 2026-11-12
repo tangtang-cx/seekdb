@@ -214,12 +214,64 @@ def render(statement, columns, rows, error=None):
     return out
 
 
+_SQLSTATE_CACHE = None
+
+
+def _mysql_errno_symbols():
+    """ER_* symbol -> number, from the checked in mysql_errno.h."""
+    symbols = {}
+    path = REPO_ROOT / "src" / "share" / "mysql_errno.h"
+    if path.is_file():
+        pattern = re.compile(r"^#define\s+(ER_\w+)\s+(\d+)\s*$")
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            match = pattern.match(line.strip())
+            if match is not None:
+                symbols[match.group(1)] = int(match.group(2))
+    return symbols
+
+
+def _sqlstate_map():
+    """errno -> sqlstate, taken from the checked in error definitions.
+
+    The server does not put the sqlstate into the error packet, the reference
+    runner reads it from the same table, so it is parsed here once.  An error
+    may name its native code either by number or by its ``ER_*`` symbol.
+    """
+    global _SQLSTATE_CACHE
+    if _SQLSTATE_CACHE is not None:
+        return _SQLSTATE_CACHE
+    symbols = _mysql_errno_symbols()
+    mapping = {}
+    path = REPO_ROOT / "src" / "share" / "ob_errno.def"
+    if path.is_file():
+        pattern = re.compile(
+            r"DEFINE_ERROR(?:_EXT|_EXT_DEP)?\s*\(\s*\w+\s*,\s*(-?\d+)\s*,"
+            r"\s*(-?\d+|[A-Z_][A-Z0-9_]*)\s*,\s*\"([^\"]*)\"")
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            match = pattern.search(line)
+            if match is None:
+                continue
+            internal = int(match.group(1))
+            raw_native = match.group(2)
+            sqlstate = match.group(3)
+            if not sqlstate:
+                continue
+            native = int(raw_native) if raw_native.lstrip("-").isdigit() else symbols.get(raw_native, -1)
+            if native > 0:
+                mapping.setdefault(native, sqlstate)
+            mapping.setdefault(abs(internal), sqlstate)
+    _SQLSTATE_CACHE = mapping
+    return mapping
+
+
 def format_error(error):
     """Render an error the way the reference mysqltest transcript does."""
     args = getattr(error, "args", ())
     errno = args[0] if args and isinstance(args[0], int) else 0
     message = args[1] if len(args) > 1 and isinstance(args[1], str) else str(error)
-    sqlstate = getattr(error, "sqlstate", None) or "HY000"
+    sqlstate = getattr(error, "sqlstate", None)
+    if not sqlstate or sqlstate == "HY000":
+        sqlstate = _sqlstate_map().get(errno, sqlstate or "HY000")
     return "ERROR %s: %s" % (sqlstate, message)
 
 
@@ -285,6 +337,11 @@ def run_case(case_id, test_path, result_path, host, port, user, password, databa
                         % (statement.line_no, error)
                     )
                 transcript.extend(render(statement, columns, rows, error))
+    except Exception as exc:  # noqa: BLE001
+        # Keep what has been produced so far, it is the only way to see the
+        # statements that ran before the failure.
+        exc.transcript = list(transcript)
+        raise
     finally:
         connection.close()
     return transcript
@@ -356,6 +413,10 @@ def main(argv=None):
                 traceback.format_exception(type(exc), exc, exc.__traceback__)
             )
             (OUT_ROOT / (case_id + ".error.log")).write_text(detail, encoding="utf-8")
+            partial = getattr(exc, "transcript", None)
+            if partial:
+                (OUT_ROOT / (case_id + ".actual.txt")).write_text(
+                    "\n".join(partial) + "\n", encoding="utf-8")
             results.append((case_id, "FAIL", str(exc)))
             failures.append(case_id)
             print("%s: FAIL %s" % (case_id, exc), flush=True)
