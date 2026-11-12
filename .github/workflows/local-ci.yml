@@ -184,6 +184,9 @@ jobs:
           call DBMS_AI_SERVICE.CREATE_AI_MODEL_ENDPOINT('diag_ollama_ep','{\"ai_model_name\":\"diag_ollama\",\"scope\":\"all\",\"url\":\"http://0.0.0.0:8000/api/generate\",\"access_key\":\"\",\"provider\":\"ollama\"}');
           select ENDPOINT_NAME, AI_MODEL_NAME, URL, PROVIDER from oceanbase.DBA_OB_AI_MODEL_ENDPOINTS where ENDPOINT_NAME='diag_ollama_ep';
           select ai_complete('diag_ollama','hello') as r;
+          call DBMS_AI_SERVICE.ALTER_AI_MODEL_ENDPOINT('diag_ollama_ep','{\"provider\":\"Ollama\"}');
+          select ENDPOINT_NAME, AI_MODEL_NAME, URL, PROVIDER from oceanbase.DBA_OB_AI_MODEL_ENDPOINTS where ENDPOINT_NAME='diag_ollama_ep';
+          select ai_complete('diag_ollama','hello') as r2;
           " 2>&1 | tail -25
 
       - name: Run mysqltest suite
