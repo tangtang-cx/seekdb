@@ -1438,6 +1438,27 @@ int ObAIFuncModel::call_dense_embedding_vector(ObArray<ObString> &contents, ObJs
 }
 
 
+// An embedding is an array of numbers, every element has to be a valid one.
+static bool ob_is_valid_embedding(ObIJsonBase *node)
+{
+  bool valid = false;
+  if (OB_NOT_NULL(node) && node->json_type() == ObJsonNodeType::J_ARRAY) {
+    ObJsonArray *array = static_cast<ObJsonArray *>(node);
+    valid = true;
+    for (int64_t i = 0; valid && i < array->element_count(); i++) {
+      ObJsonNode *element = array->get_value(i);
+      if (OB_ISNULL(element)) {
+        valid = false;
+      } else if (element->json_type() != ObJsonNodeType::J_INT
+                 && element->json_type() != ObJsonNodeType::J_UINT
+                 && element->json_type() != ObJsonNodeType::J_DOUBLE) {
+        valid = false;
+      }
+    }
+  }
+  return valid;
+}
+
 int ObAIFuncModel::call_dense_embedding_vector_v2(ObArray<ObString> &content, ObJsonObject *config, ObArray<ObString> &results)
 {
   int ret = OB_SUCCESS;
@@ -1481,6 +1502,9 @@ int ObAIFuncModel::call_dense_embedding_vector_v2(ObArray<ObString> &content, Ob
         ObIJsonBase *j_base = result_array->get_value(i);
         if (OB_ISNULL(j_base)) {
           ret = OB_ERR_UNEXPECTED;
+        } else if (!ob_is_valid_embedding(j_base)) {
+          ret = OB_INVALID_ARGUMENT;
+          LOG_USER_ERROR(OB_INVALID_ARGUMENT, "ai_embed, result is not a valid embedding");
         } else if (dimension > 0 && static_cast<ObJsonArray *>(j_base)->element_count() != dimension) {
           ret = OB_INVALID_ARGUMENT;
           LOG_USER_ERROR(OB_INVALID_ARGUMENT, "ai_embed, result dimension is not equal to dimension");

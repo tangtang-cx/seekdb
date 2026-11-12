@@ -83,8 +83,8 @@ int ObExprAIEmbed::eval_ai_embed(const ObExpr &expr, ObEvalCtx &ctx, ObDatum &re
   if (expr.arg_cnt_ == 3 ? OB_FAIL(expr.eval_param_value(ctx, arg_model_id, arg_content, arg_dim))
                          : OB_FAIL(expr.eval_param_value(ctx, arg_model_id, arg_content))) {
   } else if (arg_model_id->is_null() || arg_content->is_null()) {
-    ret = OB_INVALID_ARGUMENT;
-    LOG_USER_ERROR(OB_INVALID_ARGUMENT, "ai_embed, model id or content is null");
+    // A null input produces a null result. The other rows of the same batch
+    // must not be disturbed by it.
     res.set_null();
   } else {
     ObEvalCtx::TempAllocGuard tmp_alloc_g(ctx);
@@ -97,8 +97,12 @@ int ObExprAIEmbed::eval_ai_embed(const ObExpr &expr, ObEvalCtx &ctx, ObDatum &re
     query::ObIAiEndpointResolver *endpoint_resolver =
         ::oceanbase::share::server_service<::oceanbase::query::ObIAiEndpointResolver>();
     ObString model_id = arg_model_id->get_string();
-    ObString content = arg_content->get_string();
-    if (model_id.empty() || content.empty()) {
+    ObString content;
+    if (OB_FAIL(ObTextStringHelper::read_real_string_data(
+                    ctx.exec_ctx_, temp_allocator, *arg_content,
+                    expr.args_[CONTENT_IDX]->datum_meta_,
+                    expr.args_[CONTENT_IDX]->obj_meta_.has_lob_header(), content))) {
+    } else if (model_id.empty() || content.empty()) {
       ret = OB_INVALID_ARGUMENT;
       LOG_USER_ERROR(OB_INVALID_ARGUMENT, "ai_embed, model id or input is empty");
       res.set_null();

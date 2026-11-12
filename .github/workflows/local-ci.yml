@@ -33,7 +33,7 @@ env:
 jobs:
   build:
     name: build observer
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-16-core
     timeout-minutes: 330
     steps:
       - name: Free disk space
@@ -112,8 +112,8 @@ jobs:
   mysqltest:
     name: mysqltest ${{ inputs.suite || 'ai_function' }}
     needs: build
-    if: ${{ always() && needs.build.result == 'success' && inputs.suite != '' }}
-    runs-on: ubuntu-22.04
+    if: ${{ always() && needs.build.result == 'success' }}
+    runs-on: ubuntu-22.04-16-core
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -184,7 +184,7 @@ jobs:
       - name: Run mysqltest suite
         shell: bash
         env:
-          SUITE: ${{ inputs.suite }}
+          SUITE: ${{ inputs.suite || 'ai_function' }}
         run: |
           set -euo pipefail
           python3 tools/local_ci/run_mysqltest.py --suite "$SUITE"
