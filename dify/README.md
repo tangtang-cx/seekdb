@@ -9,15 +9,21 @@
 
 ```bash
 cd dify
-python replay.py --check                 # DSL 结构检查：start -> template -> answer
+python replay.py --check                 # DSL 结构检查：start -> code -> end
 python replay.py "SELECT * FROM orders o WHERE DATE(o.created_at)='2026-01-01' LIMIT 20, 200000;"
-                                         # 打印应用输出：固定六段，和 Dify 运行时一致
+                                         # 直接执行 DSL 里的代码节点，打印六段诊断书
+python run.py                            # 也可以起个网页：http://127.0.0.1:8501
 ```
 
-**② 导入 Dify**：工作区 → 导入 DSL 文件 → 选 `app.yml` → 打开应用直接对话。
-`app.yml` **不依赖任何模型供应商**：开始节点收 SQL，模板节点输出六段，导入即可用。
+`run.py` 与 `replay.py` 执行的是 **`app.yml` 里那个 code 节点本身**，所以这里的输出与
+在 Dify 里点「运行」得到的结果是同一份。
 
-**③ 想要模型做语义深审**：改导入 `variants/app-with-model.yml`，
+**② 导入 Dify**：工作室 → 导入 DSL 文件 → 选 `app.yml` → 导入后直接「运行」。
+`app.yml` 是 **workflow 模式**：开始节点收一个 `sql` 变量，代码节点在本机沙箱里跑 15 条规则，
+结束节点输出 `answer`（六段诊断书）与 `summary`（阻断/警告/提示计数）。
+**不依赖任何模型供应商**，导入即可运行。
+
+**③ 想要模型做语义深审**：改导入 `variants/app-with-model.yml`（对话版），
 把模型换成你工作区里已配置的那个（文件里写的是 `tongyi/qwen-plus`）。
 
 **④ 带 seekdb 的完整形态**（可选，需要本地起服务）：
@@ -32,10 +38,11 @@ python seekdb_service/verify.py          # 真 seekdb 内核 + 向量 + 混合�
 
 | 文件 | 用途 | 依赖 |
 | --- | --- | --- |
-| `app.yml` | **主交付**。零依赖、导入即跑，固定六段输出 | 无（不需要模型 / 知识库） |
-| `variants/app-with-model.yml` | 同一流程 + LLM 节点，做语义级深审 | 需要工作区已配 `tongyi/qwen-plus` 或改成你的模型 |
-| `variants/app-seekdb.yml` | HTTP 节点取本机 seekdb 医书原文 | 需要本机 seekdb 服务（`seekdb_service/`） |
-| `app-nomodel.yml` | 与 `app.yml` 等价的备份文件名 | 无 |
+| `app.yml` | **主交付**。workflow 模式：`开始(贴 SQL) → 规则体检(code 节点，15 条规则) → 出方(end 节点，六段诊断书)` | 无（不需要模型 / 知识库 / 外部服务） |
+| `app.dsl.json` | 与 `app.yml` 同一份 DSL 的 JSON 视图，供没装 PyYAML 的机器做离线回放 | 无 |
+| `variants/app-with-model.yml` | 同一玩法的对话版，含 LLM 节点做语义级深审 | 需工作区已配置模型（文件里写 `tongyi/qwen-plus`，可改成你的） |
+| `variants/app-seekdb.yml` | HTTP 节点取本机 seekdb 医书原文 | 需本机 seekdb 知识服务 |
+
 
 ---
 ## 1. 核心玩法与声明（逐条对应，可按 §4 验证）
