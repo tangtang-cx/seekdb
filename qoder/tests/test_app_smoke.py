@@ -14,11 +14,15 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from streamlit.testing.v1 import AppTest  # noqa: E402
+try:  # streamlit is an optional extra: skip instead of breaking collection
+    from streamlit.testing.v1 import AppTest  # noqa: E402
+except Exception:  # noqa: BLE001
+    AppTest = None  # type: ignore[assignment]
 
 APP = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app.py")
 
 
+@unittest.skipIf(AppTest is None, "streamlit 未安装，跳过 UI 冒烟用例")
 class AppSmokeTests(unittest.TestCase):
     def test_app_runs_and_reviews(self) -> None:
         app = AppTest.from_file(APP, default_timeout=120).run()
