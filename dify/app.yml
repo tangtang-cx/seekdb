@@ -129,8 +129,8 @@ workflow:
           title: 老中医坐诊
           desc: ''
           model:
-            provider: ''
-            name: ''
+            provider: tongyi
+            name: qwen-plus
             mode: chat
             completion_params:
               temperature: 0.3
