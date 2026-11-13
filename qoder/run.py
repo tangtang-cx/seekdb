@@ -298,14 +298,14 @@ def run_streamlit(port: int) -> int:
     )
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Qoder review assistant")
     parser.add_argument("--serve", action="store_true", help="启动常驻 HTTP 服务（模式 B）")
     parser.add_argument("--selfcheck", action="store_true", help="跑完主流程自检后退出（模式 A，默认）")
     parser.add_argument("--port", type=int, default=None, help="服务端口（默认 8501，指定即进入模式 B）")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--streamlit", action="store_true", help="serve the Streamlit UI instead")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.streamlit:
         return run_streamlit(args.port or 8501)

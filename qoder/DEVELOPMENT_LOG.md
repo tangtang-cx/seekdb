@@ -92,14 +92,14 @@ python ../dify/smoke_test.py         # 项目可运行自证
 
 | 材料 | 状态 |
 | --- | --- |
-| 项目网站网址（任何人可访问） | ⏳ Qoder Sites 发布后填入 |
+| 项目网站网址（任何人可访问） | ✅ <https://sql-review-assistant-8ptbxy0nhc9.qoder.zone/> |
 | 代码仓库地址 | `https://wzhaihqy:<PAT>@github.com/tangtang-cx/seekdb.git` |
-| 分支 / Commit | `qoder` / ⏳（提测前确认最新 40 位 SHA） |
-| Qoder 账号 UID | ⏳ 设置 → 个人资料 → 编辑 |
-| 运行说明 | ✅ `qoder/README.md` §2（含 Qoder Sites 启动命令与环境变量） |
-| 验证样例 | ✅ `qoder/README.md` §3（4 组，含初始数据 / 输入 / 步骤 / 预期结果 / 复核命令） |
+| 分支 / Commit | `qoder` / 取该分支最新 commit 的完整 40 位 SHA（见 <https://github.com/tangtang-cx/seekdb/commits/qoder>） |
+| Qoder 账号 UID | ✅ `1224577816929999`（用于核对站点归属与使用记录） |
+| 运行说明 | ✅ `qoder/RUN.md`（自检优先）· `qoder/README.md` §3（含 Qoder Sites 启动命令与环境变量） |
+| 验证样例 | ✅ `qoder/VALIDATION.md`（6 组，含初始数据 / 输入 / 步骤 / 预期结果 / 复核命令） |
 | Qoder 开发记录 | ⏳ 按 §1、§2 截图，文件名见 §0 |
 | 使用效果材料（鼓励） | ⏳ 站点访问统计截图（访问次数、独立访客） |
-| 技术结合证据 | ✅ seekdb 检索与写库实测记录；`qoder/README.md` §1 有表结构与分工说明 |
+| 技术结合证据 | ✅ **真·seekdb 内核实测**：`qoder/EVIDENCE_ROOT.json`（建表 DDL、写入行数、检索计划同时含全文分支与向量分支、命中片段、审查历史记录 id）；一键复现 `python qoder/seekdb_service/capture_evidence.py`；`qoder/README.md` §1 有表结构与分工说明 |
 
 > 仓库里**不要**提交任何真实 API Key；`.env.example` 里全是占位值。

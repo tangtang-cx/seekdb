@@ -2,7 +2,7 @@
 # ⚡ 本项目交付物在 `qoder/` 目录（先看这里）
 
 > **赛题**：Build with Qoder——用 Qoder 做一个让学习、科研和工作更高效的项目（questionId 600078）
-> **作品**：数据库代码审查助手 · Qoder × seekdb（15 条确定性规则 + seekdb 混合检索与审查历史落库）
+> **作品**：数据库代码审查助手 · Qoder × 真·seekdb 内核（15 条确定性规则 + 规则知识混合检索 + 审查历史落库）
 
 **一条命令验证主功能（零依赖，只用 Python 标准库，数秒结束、退出码 0）：**
 
@@ -12,6 +12,7 @@ bash run.sh              # 等价入口（找不到 python3/python 时自动探�
 ```
 
 > 不需要 `pip install`：`qoder/requirements.txt` 只有注释，主流程零第三方依赖。
+> 装了 `pylibseekdb` 时，自检末尾会多一行 `[seekdb] PASS 规则知识 15 条入库；混合检索命中 N 条；审查历史 M 行写入`。
 
 想交互体验（常驻服务）：`python run.py --serve` → <http://127.0.0.1:8501>
 
@@ -22,6 +23,8 @@ bash run.sh              # 等价入口（找不到 python3/python 时自动探�
 | Qoder 开发记录 | [`qoder/DEVELOPMENT_LOG.md`](qoder/DEVELOPMENT_LOG.md) · [`qoder/PROMPT.md`](qoder/PROMPT.md) |
 | 项目网站（Qoder Sites 发布） | <https://sql-review-assistant-8ptbxy0nhc9.qoder.zone/> |
 | 规则引擎源码 | [`qoder/reviewer.py`](qoder/reviewer.py)（15 条） |
+| **seekdb 真内核证据** | [`qoder/EVIDENCE_ROOT.json`](qoder/EVIDENCE_ROOT.json)（建表 DDL / 写入行数 / 检索计划含全文+向量双分支 / 命中片段 / 审查历史记录 id） |
+| seekdb 接入层源码 | [`qoder/seekdb_service/`](qoder/seekdb_service/)（存取层 + 规则知识库 + 审查接入 + 证据生成脚本） |
 
 > Qoder 账号 UID：1224577816929999（用于核对站点归属与使用记录）
 

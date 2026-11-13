@@ -60,16 +60,49 @@ curl -s -X POST localhost:8501/api/review -H "Content-Type: application/json" \
 
 **输入**：`curl -s localhost:8501/health`
 
-**预期**：`{"ok": true, "app": "qoder-review-assistant", ...}`（HTTP 200）。
+**预期**：`{"ok": true, "app": "qoder-review-assistant", "rules_loaded": 15, "seekdb": {...}}`（HTTP 200）。
 
-## 样例 D：seekdb 实际作用（可选增强，需先装 requirements-seekdb.txt）
+## 样例 D：seekdb 实际作用（需先装 requirements-seekdb.txt）
 
 ```bash
-python seekdb_service/verify.py
+pip install -r requirements-seekdb.txt
+python seekdb_service/fetch_model.py        # bge-small-zh INT8 权重（约 23 MiB）
+python seekdb_service/capture_evidence.py   # 在真内核上跑一遍并写出 EVIDENCE_ROOT.json
 ```
 
-**预期**：真 seekdb 内核启动、知识库写入并做向量+全文混合检索，返回命中文档与分数
-（这是「seekdb 实际发挥作用」的核对记录；不装 seekdb 时主功能不受影响）。
+**预期输出**：
+
+```text
+evidence written to .../Qoder/EVIDENCE_ROOT.json
+rule knowledge chunks: 15, review rows: 1
+  深分页 OFFSET 太大怎么办？ -> 3 hits (fulltext=True, vector=True)
+  WHERE 里的列被函数包裹会导致索引失效吗？ -> 3 hits (fulltext=True, vector=True)
+  SELECT * 有什么问题，应该怎么改写？ -> 3 hits (fulltext=True, vector=True)
+  NOT IN 和 NULL 组合会漏掉哪些行？ -> 3 hits (fulltext=True, vector=True)
+```
+
+`EVIDENCE_ROOT.json` 里可核对：`engine=seekdb` / `mode=embedded`、两张表的真实 DDL、
+写入行数（规则知识 15 条、审查历史 1 行）、每次检索的 `plan_has_fulltext_branch` 与
+`plan_has_vector_branch` **同时为 true**（说明检索计划里既有全文分支也有向量分支）、
+命中的原文片段与 `review_log_id`。
+
+未装 `pylibseekdb` 时主功能不受影响（`run.py` 仍 `SELFCHECK PASS`，输出 `[seekdb] SKIP`）。
+
+## 样例 E：审查确实走 seekdb（读 + 写）
+
+```bash
+python run.py --serve
+curl -s -X POST localhost:8501/api/review -H "Content-Type: application/json" \
+  -d "{\"sql\": \"UPDATE orders SET status = 'ARCHIVED';\"}"
+```
+
+**预期**：响应里除 `findings` / `summary` 外还有
+
+- `seekdb`：`{"available": true, "engine": "seekdb", "mode": "embedded", "rule_knowledge_rows": 15, "review_log_rows": 1, "embedding": {"model": "bge-small-zh-v1.5 (INT8 ONNX)", "fallback": false}}`
+- `review_id`：本轮审查写入 `qoder_review_log` 的记录 id
+- 每条 finding 的 `basis`：由 seekdb 混合检索取回的判定依据（`rule_id` 与问题编号一致）
+
+再查一次 `/health`，`seekdb.review_log_rows` 会 +1 —— 这是「指定技术实际发挥作用」的可核对记录。
 
 ## 自检
 
