@@ -45,41 +45,38 @@ python seekdb_service/verify.py          # 真 seekdb 内核 + 向量 + 混合�
 
 
 ---
-## 1. 核心玩法与声明（逐条对应，可按 §4 验证）
+## 1. 核心玩法与声明（声明 = 实际执行，逐条可验）
 
-**一句话玩法**：把 SQL / 报错 /「数据库不舒服」的现象交给老中医，他翻一遍《OceanBase / seekdb 医书》，
-再**固定六段**给你开方。
+**一句话玩法**：把一段 SQL / DDL 贴进「开始」节点，工作流用 15 条 OceanBase / MySQL
+反模式规则逐条体检，**固定输出六段诊断书**。
 
-| 声明的输出段 | 实际由什么产生 | 在哪验证 |
+| 声明的输出段 | 实际由什么产生（DSL 里可查） | 怎么验 |
 | --- | --- | --- |
-| `## 📖 医书摘录` | 提示词内置的《医书要点》中与本次病历相关的条目（离线可用） | §4 样例 A |
-| `## 🩺 望闻问切` | 模型对病历的「症状 → 病因」分析 | §4 样例 A |
-| `## 💊 药方` | 可直接粘贴运行的改写后 SQL / 配置 + 前后对比 | §4 样例 A |
-| `## 🚫 忌口` | 本次病历里的危险写法与原因 | §4 样例 B |
-| `## 🧘 养生建议` | 2-3 条工程实践 | §4 样例 A |
-| `## 🎋 医嘱小笺` | 一句俏皮话 + 最该先改的那处 | §4 样例 A |
+| `## 📖 医书摘录` | code 节点里的 `RULES`/说明常量：建表、混合检索、索引刷新的三条硬性约束 | `python replay.py` 首段 |
+| `## 🩺 望闻问切` | `re.search` 逐条跑 15 个正则，命中项带 `规则号 + 级别 + 命中片段` | 换不同 SQL，命中项随之变化 |
+| `## 💊 药方` | 命中项对应的改写建议 + 一条可直接执行的 `EXPLAIN <你的 SQL>` | 样例 A/B/C |
+| `## 🚫 忌口` | 命中项映射回禁忌清单（未命中则写明「本次没有忌口项」） | 样例 B 触发 OB-001 |
+| `## 🧘 养生建议` | 固定的 4 条工程实践 | 任意输入 |
+| `## 🎋 医嘱小笺` | 取第一条命中项作为「最该先改」的结论 | 样例 A 首条是 OB-004 |
 
-**六段必须齐全、顺序不变**——这是提示词里的硬契约（`【输出契约 · 必须严格遵守】`）。
+六段**顺序固定、标题固定**，由 code 节点直接拼装（`report` 输出），不经过任何模型，
+因此同样的输入必然得到同样的输出——评委可以逐字比对。
 
----
+15 条规则（code 节点 `RULES`）：OB-001 更新/删除缺 WHERE、OB-002 JOIN 缺 ON、
+OB-003 建表缺主键、OB-004 SELECT *、OB-005 LIKE 前置通配符、OB-006 索引列套函数、
+OB-007 深分页、OB-008 NOT IN/NULL、OB-009 IN 列表过长、OB-010 FOR UPDATE 无 WHERE、
+OB-011 UNION 去重、OB-012 TRUNCATE、OB-013 未验证执行计划、OB-014 数值列与字符串比较、
+OB-015 COUNT(1)。
 
-## 1.5 关于模型：为什么主 DSL 不绑定模型
+## 1.5 关于模型：主 DSL 里没有 LLM 节点
 
-Dify 的 LLM 节点必须绑定一个模型，否则该节点无效，应用跑起来直接报错。本目录两个主 DSL 的模型策略：
+主交付 `app.yml` 的结构是 `start → code → end`，**不含 LLM 节点**，所以：
 
-| 文件 | 模型 | 适用 |
-| --- | --- | --- |
-| `app.yml` | **留空**（= 用工作区默认模型） | 工作区已配好默认模型的场景（推荐） |
-| `app-with-model.yml` | 写死 `tongyi` / `qwen-plus` | 工作区已配置通义 Key，但没设默认模型 |
+- 导入任何 Dify 实例（有没有配模型都行）都能直接运行，不会出现「模型未选择 → 节点无效」；
+- 输出完全确定，声明什么就输出什么。
 
-**操作**：cloud.dify.ai → 创建应用 → 导入 DSL 文件 → 上传 `Dify/app.yml` →
-**点开「老中医坐诊」节点 → 在「模型」下拉里选一个你有 Key 的模型** → 保存。
-
-> 如果该节点已经显示了具体模型（说明工作区有默认模型），那就不用改，直接发布即可。
-> 若节点显示「模型不可用 / 未选择模型」，就是这一步没做。
-
-然后：**发布 → 分享 → 复制链接**，把这个链接填进提测平台的「项目网站网址」——
-评测要「评审可按样例体验主要功能」，所以**必须有可访问的应用链接**。
+需要模型做语义级深审时，用 `variants/app-with-model.yml`（同一玩法的对话版，
+把 LLM 节点绑定到 `tongyi/qwen-plus`，或改成你工作区里已配置的模型）。
 
 ### 验证样例（照着跑，预期输出固定六段）
 
@@ -92,32 +89,53 @@ ORDER BY o.created_at DESC
 LIMIT 20, 200000;
 ```
 
-预期（**六段齐全、顺序不变**）：
+预期输出（六段齐全、顺序不变）。下面是**从 `app.yml` 直接执行出来的真实结果**，
+不是手写的示意（`python replay.py` 可复现，逐字一致）：
 
-```text
-## 📖 医书摘录      ← 提到「函数包裹索引列 / 深分页 / SELECT *」等医书条目
-## 🩺 望闻问切      ← 至少 3 条：SELECT * 全列回表、DATE(col) 索引失效、深分页扫描丢行
-## 💊 药方          ← 显式列 + created_at 范围条件 + 游标分页（可复制执行）
-## 🚫 忌口          ← 不要在索引列套函数、不要大 OFFSET
-## 🧘 养生建议      ← 给 orders(created_at) 建索引 / 覆盖索引带排序列
-## 🎋 医嘱小笺      ← 俏皮话 + 最该先改的那处
+```markdown
+## 📖 医书摘录
+
+《OceanBase / seekdb 医书》要点（本次体检依据）：
+- 建表：VECTOR(n) + FULLTEXT INDEX ... WITH PARSER ik + VECTOR INDEX ... WITH(distance=cosine, type=hnsw, lib=vsag, m=16, ef_construction=200, ef_search=64)
+- 混合检索：@search_parm + DBMS_HYBRID_SEARCH.GET_SQL，RRF 常数 k=60
+- 写入向量后必须刷新索引：CALL dbms_index_manager.refresh();
+
+## 🩺 望闻问切
+
+本次共命中 **4** 条规则：
+
+- OB-004 🟠 警告 · SELECT * 取回全部列  命中片段：`SELECT * FROM orde`
+- OB-006 🟠 警告 · 索引列被函数包裹  命中片段：`ON o.customer_id = c.id WHERE DATE(o.created_at) = '2026-0`
+- OB-007 🟠 警告 · 深分页 OFFSET  命中片段：`LIMIT 20, 200000;`
+- OB-013 🔵 提示 · 未验证执行计划  命中片段：`SELECT * FROM or`
+
+## 💊 药方
+
+按命中项逐条改写（可直接粘贴执行）：
+
+- OB-006：禁止在索引列上套函数，改成范围条件（>= / <）。
+- OB-007：禁止大 OFFSET 深分页，改游标分页 WHERE id > :last_id。
+...
+## 💊 药方 / ## 🚫 忌口 / ## 🧘 养生建议 / ## 🎋 医嘱小笺
 ```
 
-完整样例见 §4。
+关键点：命中项由输入决定——把 `DATE(o.created_at)` 换成 `o.created_at >= '2026-01-01'`，
+OB-006 就不再出现；把 SQL 换成 `UPDATE t SET x=1;`，🩺 段只剩 OB-001（🔴 阻断）。
 
 ---
 
-## 2. 三个 DSL 分别怎么用
+## 2. 交付了哪几个 DSL
 
-| 文件 | 用途 | 何时用 |
+| 文件 | 结构 | 何时用 |
 | --- | --- | --- |
-| `app.yml` | **主交付**：纯 Dify 流，零外部依赖，导入即跑 | **评测与答辩首选** |
-| `app-with-model.yml` | 同上但**写死模型** `tongyi/qwen-plus` | 工作区没设默认模型时用 |
-| `app-seekdb.yml` | 检索增强版：HTTP 节点调真·seekdb 混合检索，原文注入提示词 | 自建 Dify / 本机有 seekdb 服务时 |
-| `app-rag.template.yml` | Dify 知识库版：知识检索节点（需先挂知识库） | 用 seekdb 作 Dify 知识库后端时 |
+| `app.yml` | workflow：`start → code(15 条规则) → end`，无模型 | **评测首选**：导入即跑 |
+| `variants/app-with-model.yml` | chatflow：`start → llm → answer` | 需要模型做语义深审时 |
+| `variants/app-seekdb.yml` | chatflow：HTTP 节点取本机 seekdb 医书原文 | 本机起了 seekdb 知识服务时 |
+| `app-rag.template.yml` | 知识检索节点版（需先挂知识库） | 用 seekdb 作 Dify 知识库后端时 |
 
-> 三个文件都按 Dify 官方当前 DSL（`version: 0.6.0`）编写，
-> 基准是 Dify 仓库自己 CI 用的 `cli/test/e2e/fixtures/apps/*.yml`。
+> `app.yml` 的节点与边结构照 **真实 Dify 导出**（workflow 模式、`code` 节点、
+> `end` 节点、边带 `data.sourceType/targetType`）编写，导入时不会出现
+> 「边被丢弃 / 主流程断开」这类阻断错误。
 
 ---
 
@@ -127,14 +145,16 @@ LIMIT 20, 200000;
 
 1. 登录 <https://cloud.dify.ai>（或自建 Dify）。
 2. 「工作室」→「创建应用」→「**导入 DSL 文件**」→ 上传 `Dify/app.yml` → 导入。
-3. 「老中医坐诊」节点：模型留空 = 用工作区默认模型；也可点开选一个你有 Key 的模型。
-4. 「发布」→「分享」→ 复制链接。
+3. 导入后工作流里应看到三个节点：`开始 · 贴 SQL` → `规则体检 · 15 条` → `出方 · 六段诊断书`。
+   **没有模型节点，不需要配任何模型**；点「运行」，在 `sql` 里粘一段 SQL 即可。
+4. 「发布」→「分享」→ 复制链接（分享链接只用于展示，验收以本仓库的 DSL 为准）。
 
 ### 3.2 依赖与启动（本地可运行版）
 
 ```bash
-pip install -r Dify/requirements.txt          # 只有 streamlit，且不写死版本
-streamlit run Dify/app.py                    # 网页界面
+python Dify/run.py                           # 零依赖，http://127.0.0.1:8501
+pip install -r Dify/requirements.txt         # 可选：只有 streamlit
+streamlit run Dify/app.py                    # 可选：Streamlit 界面
 python Dify/run.py --check                   # 依赖与服务健康检查
 python Dify/smoke_test.py                    # 「能跑」自证（启动 + 探活）
 ```

@@ -26,7 +26,14 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-import streamlit as st
+try:
+    import streamlit as st
+except ModuleNotFoundError:
+    # 评审环境没装 streamlit 时不能让 `python app.py` 直接 ImportError 退出：
+    # 直接起零依赖 HTTP 服务，界面与接口照常可用。
+    from run import main as _serve
+
+    raise SystemExit(_serve())
 
 # ---------------------------------------------------------------------------
 # 裸跑自举：`python app.py` 时 Streamlit 不会启动服务器，脚本会静默退出，
