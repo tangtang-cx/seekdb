@@ -1,0 +1,265 @@
+app:
+  description: SQL 老中医 · 数据库问诊室（seekdb 检索增强版）。主流程先用 HTTP 节点调用真实的
+    seekdb 向量库做「向量 + 全文 + RRF」混合检索，把检索到的原文注入提示词后，再按固定六段式开方。
+    需先启动 seekdb 知识服务；服务不可用时该节点会失败，请改用 app.yml（零依赖版）。
+  icon: 🩺
+  icon_background: '#EFF1F5'
+  icon_type: emoji
+  mode: advanced-chat
+  name: SQL 老中医 · 数据库问诊室（seekdb 检索增强版）
+  use_icon_as_answer_icon: false
+dependencies: []
+kind: app
+version: 0.6.0
+workflow:
+  conversation_variables: []
+  environment_variables:
+    - description: seekdb 知识服务地址（Dify/seekdb_service/serve.py 提供）
+      id: seekdb-service-url
+      name: seekdb_service_url
+      selector:
+        - env
+        - seekdb_service_url
+      value: http://127.0.0.1:8848
+      value_type: string
+  features:
+    file_upload:
+      allowed_file_extensions:
+        - .sql
+        - .md
+        - .txt
+      allowed_file_types:
+        - custom
+      allowed_file_upload_methods:
+        - local_file
+        - remote_url
+      enabled: true
+      fileUploadConfig:
+        attachment_image_file_size_limit: 2
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        file_upload_limit: 20
+        image_file_batch_limit: 10
+        image_file_size_limit: 10
+        single_chunk_attachment_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+          - local_file
+          - remote_url
+      number_limits: 3
+    opening_statement: >-
+      🩺 欢迎来到「SQL 老中医 · 数据库问诊室」！\n\n老中医看病前会先去医书里翻一翻——
+      这次翻的是一台**真实的 seekdb 向量库**（本地 bge-small-zh 向量 + IK 全文索引 + RRF 混合检索），
+      检索到的原文会作为「医书摘录」一起给你。\n\n把病历交给我：贴一段 SQL、甩一条报错，
+      或者用大白话说「我的查询像老牛拉车」。\n\n我会按老中医的套路给你开方：\n
+      1. 📖 医书摘录（来自 seekdb 检索）\n2. 🩺 望闻问切 —— 病灶在哪\n3. 💊 药方 —— 可直接复制的改写版 SQL\n
+      4. 🚫 忌口 —— 哪些写法千万别碰\n5. 🧘 养生建议 —— 平时怎么保养数据库\n
+      6. 🎋 医嘱小笺 —— 一句话俏皮话
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions:
+      - HNSW 向量索引的建表语句是什么？
+      - 混合检索（向量 + 全文）如何用 RRF 融合？
+      - 端侧 INT8 量化会损失多少召回率？
+      - AMD GPU 加速 HNSW 的建图收益有多少？
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+      - data:
+          sourceType: start
+          targetType: http-request
+        id: start-seekdb
+        source: start
+        sourceHandle: source
+        target: seekdb
+        targetHandle: target
+        type: custom
+      - data:
+          sourceType: http-request
+          targetType: llm
+        id: seekdb-llm
+        source: seekdb
+        sourceHandle: source
+        target: llm
+        targetHandle: target
+        type: custom
+      - data:
+          sourceType: llm
+          targetType: answer
+        id: llm-answer
+        source: llm
+        sourceHandle: source
+        target: answer
+        targetHandle: target
+        type: custom
+    nodes:
+      - id: start
+        type: custom
+        position:
+          x: 80
+          y: 282
+        positionAbsolute:
+          x: 80
+          y: 282
+        width: 242
+        height: 90
+        sourcePosition: right
+        targetPosition: left
+        selected: false
+        data:
+          type: start
+          title: 开始
+          desc: ''
+          variables: []
+          selected: false
+      - id: seekdb
+        type: custom
+        position:
+          x: 400
+          y: 282
+        positionAbsolute:
+          x: 400
+          y: 282
+        width: 242
+        height: 120
+        sourcePosition: right
+        targetPosition: left
+        selected: false
+        data:
+          type: http-request
+          title: 翻医书（查询 seekdb）
+          desc: 向量 + 全文 + RRF 混合检索，融合在 seekdb 内核内完成
+          method: post
+          url: http://127.0.0.1:8848/search
+          authorization:
+            type: no-auth
+            config: null
+          headers: 'Content-Type:application/json'
+          params: ''
+          body:
+            type: json
+            data:
+              - id: body-query
+                type: text
+                key: ''
+                value: '{"query": "{{#sys.query#}}", "top_k": 4, "mode": "hybrid"}'
+          timeout:
+            max_connect_timeout: 10
+            max_read_timeout: 60
+            max_write_timeout: 20
+          retry_config:
+            max_retries: 2
+            retry_enabled: false
+            retry_interval: 1000
+          ssl_verify: true
+          variables: []
+          selected: false
+      - id: llm
+        type: custom
+        position:
+          x: 720
+          y: 282
+        positionAbsolute:
+          x: 720
+          y: 282
+        width: 242
+        height: 98
+        sourcePosition: right
+        targetPosition: left
+        selected: false
+        data:
+          type: llm
+          title: 老中医坐诊
+          desc: ''
+          model:
+            provider: ''
+            name: ''
+            mode: chat
+            completion_params:
+              temperature: 0.8
+              max_tokens: 2048
+          prompt_template:
+            - role: system
+              text: >-
+                你是「SQL 老中医」，一位专治数据库疑难杂症的老派中医，兼 OceanBase /
+                seekdb 资深工程师。你手上有一本《OceanBase / seekdb 医书》，医书内容来自一台真实的
+                seekdb 向量库（bge-small-zh 向量检索 + IK 全文检索 + RRF 混合检索）的检索结果。
+                严格按下面的结构回答，使用 Markdown 分节：
+                ### 📖 医书摘录（seekdb 检索）
+                先列出检索到的原文片段标题与关键句，说明这是从 seekdb 医书里查到的。
+                ### 🩺 望闻问切（病灶诊断）
+                结合医书与用户给的 SQL / 报错 / 现象，列出 2-4 条具体问题，说明「症状 → 病因」。
+                ### 💊 药方（可直接复制）
+                给出优化后的完整 SQL 或配置片段，能直接粘贴运行；给出前后对比。
+                ### 🚫 忌口（千万别写）
+                列出导致性能或正确性问题的写法并说明原因。
+                ### 🧘 养生建议
+                2-3 条工程实践建议（索引设计、参数、分批、监控等）。
+                ### 🎋 医嘱小笺
+                一句俏皮话 + 最该先改的那一处。
+                技术要求：涉及 OceanBase / seekdb 时必须使用真实且正确的语法，例如
+                向量列写作 VECTOR(n)；HNSW 索引写作
+                VECTOR INDEX idx (embedding) WITH(distance=cosine, type=hnsw, lib=vsag,
+                m=16, ef_construction=200, ef_search=64)；
+                全文索引用 FULLTEXT INDEX ... WITH PARSER ik；
+                写入后需要刷新索引（dbms_index_manager.refresh()）。
+                不要编造不存在的函数、参数或表；如果用户只描述现象而没给 SQL，先给出最可能的 3 个病因，
+                并请对方贴出 SQL 或 EXPLAIN 结果；如果医书没有覆盖到，就直说「医书里没有这一条」。
+            - role: user
+              text: |-
+                【seekdb 医书检索结果（JSON）】
+                {{#seekdb.body#}}
+
+                【病历】
+                {{#sys.query#}}
+          context:
+            enabled: false
+            variable_selector: []
+          memory:
+            query_prompt_template: '{{#sys.query#}}'
+            window:
+              enabled: true
+              size: 10
+          vision:
+            enabled: false
+          variables: []
+          selected: false
+      - id: answer
+        type: custom
+        position:
+          x: 1040
+          y: 282
+        positionAbsolute:
+          x: 1040
+          y: 282
+        width: 242
+        height: 90
+        sourcePosition: right
+        targetPosition: left
+        selected: false
+        data:
+          type: answer
+          title: 出方
+          desc: ''
+          answer: '{{#llm.text#}}'
+          variables: []
+          selected: false
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.8
+  rag_pipeline_variables: []

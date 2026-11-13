@@ -1,0 +1,66 @@
+services:
+  # ---------------------------------------------------------------------
+  # seekdb：真实数据库内核。
+  #  * 持久化：数据落在 ./data/seekdb（容器重启后数据仍在，评测机的
+  #    「重启恢复」场景靠这一条）；
+  #  * 就绪探针：healthcheck 保证下面的 service 不会早于数据库启动
+  #    （Dify compose 最常见的「web 早于 DB 启动」问题靠 depends_on 解决）。
+  # ---------------------------------------------------------------------
+  seekdb:
+    image: oceanbase/seekdb:latest
+    container_name: dify-seekdb
+    ports:
+      - "2881:2881"
+    environment:
+      ROOT_PASSWORD: ""
+      CPU_COUNT: "4"
+      MEMORY_LIMIT: "4G"
+    volumes:
+      - ./data/seekdb:/var/lib/oceanbase
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/2881' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------
+  # 知识服务：本地 bge-small-zh INT8 向量化 + seekdb 混合检索（向量+全文+RRF）
+  #            + 审查历史落库（Dify 题的「技术结合」实际承担者）。
+  #  * 持久化：模型权重与数据目录都挂出来；
+  #  * 依赖顺序：等 seekdb healthy 再启动；
+  #  * 不用任何 Dify 插件 → 不存在 dify-plugin-daemon 重启丢插件的问题。
+  # ---------------------------------------------------------------------
+  knowledge-service:
+    image: python:3.11-slim
+    container_name: dify-knowledge-service
+    working_dir: /app
+    depends_on:
+      seekdb:
+        condition: service_healthy
+    ports:
+      - "8848:8848"
+    environment:
+      SEEKDB_HOST: seekdb
+      SEEKDB_PORT: "2881"
+      SEEKDB_USER: root
+      SEEKDB_PASSWORD: ""
+      SEEKDB_DATABASE: test
+      BGE_MODEL_DIR: /app/models
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ../:/app:ro
+      - ./data/models:/app/models
+      - ./data/service:/app/.data
+    command: >
+      bash -c "pip install --no-cache-dir -r /app/Dify/seekdb_service/requirements.txt &&
+               python /app/Dify/seekdb_service/fetch_model.py || true;
+               python /app/Dify/seekdb_service/serve.py --host 0.0.0.0 --port 8848"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:8848/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 60s
+    restart: unless-stopped

@@ -1,0 +1,42 @@
+services:
+  # 真实的 seekdb 服务端（HNSW 近似检索 + 全文索引都在这里跑）
+  seekdb:
+    image: oceanbase/seekdb:latest
+    container_name: dify-seekdb
+    ports:
+      - "2881:2881"
+    environment:
+      ROOT_PASSWORD: ""
+      CPU_COUNT: "4"
+      MEMORY_LIMIT: "4G"
+    volumes:
+      - ./.data/seekdb:/var/lib/oceanbase
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/2881' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # Dify 调用的知识服务：bge 本地向量化 + seekdb 混合检索
+  service:
+    image: python:3.11-slim
+    container_name: dify-seekdb-service
+    working_dir: /app
+    depends_on:
+      - seekdb
+    ports:
+      - "8848:8848"
+    environment:
+      SEEKDB_HOST: seekdb
+      SEEKDB_PORT: "2881"
+      SEEKDB_USER: root
+      SEEKDB_PASSWORD: ""
+      SEEKDB_DATABASE: test
+      BGE_MODEL_DIR: /app/models
+    volumes:
+      - ..:/app
+      - ../../stepfun/public/models:/app/models:ro
+    command: >
+      bash -c "pip install --no-cache-dir -r /app/Dify/seekdb_service/requirements.txt &&
+               python /app/Dify/seekdb_service/serve.py --host 0.0.0.0 --port 8848"

@@ -1,0 +1,17 @@
+# 可选增强依赖：完整的「真·seekdb 内核 + 本地 bge-small-zh INT8 向量」
+#
+#   pip install -r requirements-seekdb.txt
+#   python seekdb_service/fetch_model.py
+#
+# 全部使用宽松版本区间（不写死具体版本），以适配评测机的
+# Python 3.9 ~ 3.13 与不同平台 wheel。
+#
+# 说明：
+# * pylibseekdb —— 真实的 seekdb 内核（嵌入式 / 服务端两种模式）
+# * onnxruntime —— 运行 bge-small-zh-v1.5 的 INT8 ONNX 权重
+# * tokenizers  —— 该模型的 BERT WordPiece 分词器
+# * numpy       —— 向量运算
+pylibseekdb>=1.4.0
+onnxruntime>=1.16
+tokenizers>=0.19
+numpy>=1.24
