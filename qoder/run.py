@@ -68,8 +68,15 @@ class Handler(SimpleHTTPRequestHandler):
         if path in ("/health", "/_stcore/health", "/healthz"):
             try:
                 analyze, _ = _load_engine()
-                n = len(analyze("SELECT * FROM t;"))
-                self._json({"ok": True, "app": "qoder-review-assistant", "rules_loaded": n})
+                from reviewer import RULES  # noqa: WPS433
+
+                probe_findings = len(analyze("SELECT * FROM t;"))
+                self._json({
+                    "ok": True,
+                    "app": "qoder-review-assistant",
+                    "rules_loaded": len(RULES),
+                    "probe_findings_on_sample_sql": probe_findings,
+                })
             except Exception as error:  # noqa: BLE001
                 self._json({"ok": False, "error": f"{type(error).__name__}: {error}"}, 500)
             return
