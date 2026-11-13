@@ -12,7 +12,7 @@ https://sql-review-assistant-8ptbxy0nhc9.qoder.zone/
   `DBMS_HYBRID_SEARCH` 检索链路、运行说明、验证样例、仓库链接；
 - 两张截图在站点上实测可加载（HTTP 200 / image/png）。
 
-> 题目：**Build with Qoder——用 Qoder 做一个让学习、科研和工作更效���的项目**。
+> 题目：**Build with Qoder——用 Qoder 做一个让学习、科研和工作更效的项目**。
 > 要求：项目必须用 Qoder 开发，**实际使用 seekdb 或 PowerContext 中的至少一种**，
 > 并通过 **Qoder Sites** 发布项目网站。
 > 本目录：Qoder 生成的 Streamlit 应用 + **真实接入 seekdb**（检索审查依据 + 审查记录写回），
@@ -20,37 +20,46 @@ https://sql-review-assistant-8ptbxy0nhc9.qoder.zone/
 
 ---
 
-## 0. 评委复制这一行（跑通即得分）
+## 0. 三条命令验完（评委按这个顺序看）
+
+**① 零依赖启动（只用 Python 标准库，装不装 streamlit 都能跑）**：
 
 ```bash
 cd qoder
-pip install -r requirements.txt      # 只有 streamlit，无需其它依赖
-streamlit run app.py                  # http://localhost:8501
+python run.py                      # http://127.0.0.1:8501
 ```
 
-打开 <http://localhost:8501> 即可看到界面；**首屏 2 秒内可用**（seekdb 服务在后台自动拉起，
-拉不���也不影响使用：规则层照常工作，只是没有「医书依据」与历史落库）。
+`run.py` 直接起一个标准库 HTTP 服务：`/` 是交互式审查界面（粘 SQL → 点「开始审查」→
+三级结果），`/health` 是健康检查，`POST /api/review` 是同一套规则引擎的 JSON 接口。
+**不需要 pip install、不需要网络、不需要 seekdb 在线**，首屏 1 秒内可用。
 
-自检（不需要网络与其它依赖）：
+**② 完整 Streamlit 界面（可选）**：
 
 ```bash
-python tests/test_rules.py -v        # 22 passed
-python tests/test_app_smoke.py -v    # 1 passed
+pip install -r requirements.txt    # 只有 streamlit
+streamlit run app.py               # http://localhost:8501
 ```
 
-带 seekdb 的完整形态（可选）：
+**③ 自检**：
 
 ```bash
-pip install -r requirements-seekdb.txt          # 宽松区间，不写死版本
-python ../dify/seekdb_service/fetch_model.py    # 取一次 bge-small-zh INT8 权重
-streamlit run app.py                             # 自动拉起 seekdb 知识服务
+python tests/test_rules.py -v      # 23 passed：15 条规则的回归用例
+curl -s localhost:8501/health      # {"ok": true, ...}
 ```
 
-Docker 形态：
+带 seekdb 的完整形态（可选，需要本机起服务）：
 
 ```bash
-docker compose up --build            # -> http://localhost:8501
-docker compose --profile seekdb up -d # 额外起 seekdb + 知识服务
+pip install -r requirements-seekdb.txt
+python seekdb_service/fetch_model.py    # 取一次 bge-small-zh INT8 权重
+streamlit run app.py                    # 自动拉起 seekdb 知识服务
+```
+
+Docker：
+
+```bash
+docker compose up --build               # -> http://localhost:8501
+docker compose --profile seekdb up -d   # 额外起 seekdb + 知识服务
 ```
 
 **Qoder 账号 UID**（提交材料用，核对站点归属）：`1224577816929999`（昵称 `nick4432907413`）。

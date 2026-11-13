@@ -93,7 +93,7 @@ python ../dify/smoke_test.py         # 项目可运行自证
 | 材料 | 状态 |
 | --- | --- |
 | 项目网站网址（任何人可访问） | ⏳ Qoder Sites 发布后填入 |
-| 代码仓库地址 | `https://wzhaihqy:<PAT>@github.com/tangtang-cx/ai-ecosystem.git` |
+| 代码仓库地址 | `https://wzhaihqy:<PAT>@github.com/tangtang-cx/seekdb.git` |
 | 分支 / Commit | `qoder` / ⏳（提测前确认最新 40 位 SHA） |
 | Qoder 账号 UID | ⏳ 设置 → 个人资料 → 编辑 |
 | 运行说明 | ✅ `qoder/README.md` §2（含 Qoder Sites 启动命令与环境变量） |

@@ -119,7 +119,8 @@ RULES: list[Rule] = [
         id="OB-006",
         level="warn",
         title="索引列被函数包裹",
-        pattern=r"\b(where|and|or)\b[^;\n]{0,400}?\b(year|month|day|date|date_format|substring|left|right|lower|upper|concat)\s*\(\s*[a-z_][a-z0-9_]*\s*\)",
+        # 列名允许带表别名前缀（o.created_at）与空白，这是线上最常见的写法
+        pattern=r"\b(where|and|or|on|group\s+by|order\s+by)\b[^;\n]{0,400}?\b(year|month|day|date|date_format|substring|left|right|lower|upper|concat|ifnull|if_null|trim)\s*\(\s*[a-z_][a-z0-9_]*(\s*\.\s*[a-z_][a-z0-9_]*)?\s*\)",
         message="在 WHERE 里对列使用函数会让普通索引失效。",
         suggestion="改成范围条件（>= / <），或建函数索引 / 生成列索引。",
     ),
@@ -184,9 +185,11 @@ RULES: list[Rule] = [
         id="OB-014",
         level="info",
         title="疑似隐式类型转换",
-        pattern=r"\b([a-z_][a-z0-9_]*)\s*=\s*(\d{1,18})\b",
-        message="数值字面量与字符串列比较会触发隐式类型转换，导致索引失效。",
-        suggestion="让字面量类型与列类型一致（给数字列写数字、字符串列写字符串）。",
+        # 只报真反模式：数值口径的列被写成字符串字面量（id = '123'）。
+        # 「id = 123」在无法获知列类型时属于正常写法，不报，避免误报噪声。
+        pattern=r"\b([a-z_][a-z0-9_]*)\s*(?:=|<>|!=)\s*'(\d{1,18})'",
+        message="数值列与字符串字面量比较会触发隐式类型转换，导致索引失效。",
+        suggestion="让字面量类型与列类型一致：数值列直接写数字（id = 123），不要加引号。",
         keywords=("where",),
     ),
     Rule(

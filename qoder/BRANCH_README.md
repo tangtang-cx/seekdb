@@ -6,9 +6,9 @@
 
 | 项 | 值 |
 | --- | --- |
-| 仓库 | `https://github.com/tangtang-cx/ai-ecosystem` |
+| 仓库 | `https://github.com/tangtang-cx/seekdb` |
 | 分支 | `qoder` |
-| Commit SHA | 取该分支最新 commit 的完整 40 位 SHA（见 <https://github.com/tangtang-cx/ai-ecosystem/commits/qoder>） |
+| Commit SHA | 取该分支最新 commit 的完整 40 位 SHA（见 <https://github.com/tangtang-cx/seekdb/commits/qoder>） |
 
 ## 项目网站（已发布，公开可访问）
 

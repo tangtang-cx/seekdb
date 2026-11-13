@@ -32,7 +32,7 @@
 3. 展示真实界面截图：screenshots/04-app-home.png 与 screenshots/05-app-review-results.png；
 4. 写出运行说明：pip install -r requirements.txt && streamlit run app.py，
    并说明 seekdb 检索与审查记录落库的表结构；
-5. 代码仓库链接指向 https://github.com/tangtang-cx/ai-ecosystem （分支 qoder）。
+5. 代码仓库链接指向 https://github.com/tangtang-cx/seekdb （分支 qoder）。
 ```
 
 > 如果 Qoder 生成的站点不是你要的样子，继续在对话框里追加修改指令，它会就地改。
@@ -82,7 +82,7 @@
 | 字段 | 填什么 |
 | --- | --- |
 | 项目网站网址 | 第 4 步复制的链接 |
-| 代码仓库地址 | `https://wzhaihqy:<你的 GitHub PAT>@github.com/tangtang-cx/ai-ecosystem.git` |
+| 代码仓库地址 | `https://wzhaihqy:<你的 GitHub PAT>@github.com/tangtang-cx/seekdb.git` |
 | 分支 | `qoder` |
 | Commit | `qoder` 分支最新 commit 的 40 位 SHA（提测前用 `git ls-remote` 或仓库页面确认） |
 | Qoder 账号 UID | **设置 → 个人资料 → 编辑** 里能看到（官方原文：「Qoder UID 可以在设置 → 个人资料 → 编辑中查看」） |
