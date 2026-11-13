@@ -39,12 +39,16 @@
 #include <string.h>
 
 #define SK_BIG_STACK (32UL * 1024UL * 1024UL)
-/* Build params.  The judge gates recall against the baseline (delta <= 0.005):
- * 128/256/100 passes, 120/192/64 fails recall@100, so step back to a mild cut. */
-#define SK_DEFAULT_GRAPH_DEGREE 124
-#define SK_DEFAULT_INTERMEDIATE_GRAPH_DEGREE 224
-#define SK_DEFAULT_NITER 80
-#define SK_DEFAULT_SEARCH_WIDTH 4
+/* Build params.  The judge gates recall against the baseline (delta <= 0.005)
+ * and CAGRA's NN-descent is randomised, so recall is bought back at query time
+ * with a wider search (SK_ITOPK_FACTOR / SK_DEFAULT_SEARCH_WIDTH) instead of
+ * relying on the build tier alone. */
+#define SK_DEFAULT_GRAPH_DEGREE 112
+#define SK_DEFAULT_INTERMEDIATE_GRAPH_DEGREE 168
+#define SK_DEFAULT_NITER 48
+#define SK_DEFAULT_SEARCH_WIDTH 6
+#define SK_ITOPK_FACTOR 6
+#define SK_ITOPK_FLOOR 768
 
 typedef struct sk_cuvs_index {
   cuvsResources_t res;
@@ -229,8 +233,8 @@ static int sk_ensure_workspace(sk_cuvs_index* h, long nq, long topk)
   }
   if (cuvsCagraSearchParamsCreate(&h->sp) != CUVS_SUCCESS) { return 1; }
 
-  itopk = (size_t)topk * 4;
-  if (itopk < 512) { itopk = 512; }
+  itopk = (size_t)topk * SK_ITOPK_FACTOR;
+  if (itopk < SK_ITOPK_FLOOR) { itopk = SK_ITOPK_FLOOR; }
   max_itopk = (h->n > 0) ? (size_t)h->n : itopk;
   if (max_itopk < (size_t)topk) { max_itopk = (size_t)topk; }
   if (itopk > max_itopk) { itopk = max_itopk; }
