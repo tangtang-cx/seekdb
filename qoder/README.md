@@ -43,13 +43,25 @@ python run.py                      # 打印每步实测结果 + SELFCHECK PASS�
 [selfcheck] PASS  B 全表 UPDATE: error=1, warn=0, info=0
 [selfcheck] PASS  C 规则总数
 SELFCHECK PASS (4/4 用例, 15 条规则)
+[seekdb] SKIP  pylibseekdb 未安装 -> 跳过（主流程零依赖降级可用）
 ```
+
+**所有入口行为一致**（都跑完即退出、退出码 0，不会挂住等探活）：
+
+| 命令 | 行为 |
+| --- | --- |
+| `python run.py` | 自检 → `SELFCHECK PASS`，退出码 0 |
+| `python app.py` | 同上（Streamlit 未安装时自动退回本入口） |
+| `bash start.sh` | 同上（脚本自动探测 python3/python） |
+| `python verify.py` | 四项验收（规则引擎 / 自检 / `/health` / `POST /api/review`）→ `VERIFY PASS` |
+| `python run.py --serve` | 常驻 HTTP 服务（要服务时才用） |
+| `streamlit run app.py` | 完整 Streamlit 界面（装了 streamlit 才有） |
 
 **② 交互体验（常驻服务）**：
 
 ```bash
 python run.py --serve              # -> http://127.0.0.1:8501（也可 --port 9000）
-bash start.sh                      # 等价：自动找 python 后同上
+bash start.sh --serve              # 等价：自动找 python3/python 后同上
 ```
 
 `/` 是交互式审查界面（粘 SQL → 点「开始审查」→ 三级结果），`/health` 是健康检查，
@@ -155,7 +167,7 @@ python verify.py       # -> VERIFY PASS (4/4 项检查)：规则引擎 / 自检 
 再起常驻服务做交互体验：
 
 ```bash
-python run.py --serve  # 或 bash start.sh   ->  http://127.0.0.1:8501
+python run.py --serve  # 或 bash start.sh --serve   ->  http://127.0.0.1:8501
 ```
 
 - `/`            交互式审查界面（粘 SQL → 点「开始审查」→ 三级结果，与 Qoder Sites 页面同一套规则）

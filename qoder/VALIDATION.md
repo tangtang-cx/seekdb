@@ -10,7 +10,7 @@
 > **第 1 步：起服务做交互复核**（下面每个样例都可以用 `curl` 直接验，预期输出与实际运行**逐字一致**）：
 >
 > ```bash
-> python run.py --serve    # 或 bash start.sh   ->  http://127.0.0.1:8501
+> python run.py --serve    # 或 bash start.sh --serve   ->  http://127.0.0.1:8501
 > ```
 
 ## 样例 A：慢查询 + 深分页（核心玩法）

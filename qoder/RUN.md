@@ -39,7 +39,7 @@ SELFCHECK PASS (4/4 用例, 15 条规则)
 ```bash
 python run.py --serve          # -> http://127.0.0.1:8501
 python run.py --port 9000      # 换端口，等价于 --serve
-bash start.sh                  # 等价：自动找 python3/python 后同上
+bash start.sh --serve            # 等价：自动找 python3/python 后同上
 ```
 
 | 端点 | 说明 |
