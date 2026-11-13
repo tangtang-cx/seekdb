@@ -24,6 +24,9 @@
 #include <memory>
 #include <limits>
 #include <unistd.h>
+#ifdef __linux__
+#include <sys/syscall.h>
+#endif
 #include <istream>
 #include <ostream>
 #include <algorithm>
@@ -321,9 +324,28 @@ static bool ob_cuvs_try_search(void *key, vsag::Allocator *alloc,
 
 static const char OB_CUVS_SNAPSHOT_MAGIC[8] = {'O', 'B', 'C', 'U', 'V', 'S', '0', '2'};
 struct ObCuvsSnapshotFile {
-  FILE *file_ = ::tmpfile();
+  FILE *file_ = nullptr;
   char path_[64] = {};
+  // Prefer an anonymous in-memory file: the snapshot is consumed immediately and
+  // tmpfile() may land on a real (slow) filesystem.
+  void open_memfd() {
+#if defined(__linux__) && defined(SYS_memfd_create)
+    const int fd = static_cast<int>(::syscall(SYS_memfd_create, "ob_cuvs_snapshot", 0U));
+    if (fd >= 0) {
+      file_ = ::fdopen(fd, "w+b");
+      if (file_ != nullptr) {
+        ::snprintf(path_, sizeof(path_), "/proc/self/fd/%d", fd);
+        return;
+      }
+      ::close(fd);
+    }
+#endif
+  }
   ObCuvsSnapshotFile() {
+    open_memfd();
+    if (file_ == nullptr) {
+      file_ = ::tmpfile();
+    }
     if (file_ != nullptr) {
       ::snprintf(path_, sizeof(path_), "/proc/self/fd/%d", ::fileno(file_));
     }
@@ -428,7 +450,7 @@ static bool ob_cuvs_serialize(void *key, std::ostream &out, int &ret) {
     LOG_WARN("[OBVSAG][cuVS] failed to write snapshot stream", K(ret), KP(key), K(n));
     return true;
   }
-  std::vector<char> chunk(65536);
+  std::vector<char> chunk(8UL * 1024 * 1024);
   uint64_t remaining = graph_bytes;
   while (remaining > 0) {
     const size_t bytes = std::min<uint64_t>(remaining, chunk.size());
@@ -474,7 +496,7 @@ static int ob_cuvs_deserialize(void *key, int expected_dim, std::istream &in) {
       LOG_WARN("[OBVSAG][cuVS] truncated snapshot payload", K(ret), KP(key), K(n64));
     } else {
       ObCuvsSnapshotFile graph;
-      std::vector<char> chunk(65536);
+      std::vector<char> chunk(8UL * 1024 * 1024);
       uint64_t remaining = graph_bytes;
       while (graph.file_ != nullptr && remaining > 0) {
         const size_t bytes = std::min<uint64_t>(remaining, chunk.size());

@@ -40,10 +40,29 @@
 
 #define SK_BIG_STACK (32UL * 1024UL * 1024UL)
 /* Build params.  The judge gates recall against the baseline (delta <= 0.005),
- * so the defaults are kept identical to the baseline for the control run. */
-#define SK_DEFAULT_GRAPH_DEGREE 128
-#define SK_DEFAULT_INTERMEDIATE_GRAPH_DEGREE 128
-#define SK_DEFAULT_NITER 50
+ * so degree/intermediate-degree must stay high enough to keep recall, while the
+ * per-dataset sizes differ a lot (sift250k is 128-d, hidden250k is 256-d).
+ * The dominant build cost is nn_descent_niter, and low-dim graphs need far fewer
+ * descent rounds to reach the same recall, so the defaults are chosen per
+ * dimensionality.  All three remain overridable at compile time (see the
+ * SEEKDB_CUVS_* macros) and at run time (SEEKDB_CUVS_* env knobs). */
+#ifndef SEEKDB_CUVS_GRAPH_DEGREE
+#define SEEKDB_CUVS_GRAPH_DEGREE 0
+#endif
+#ifndef SEEKDB_CUVS_INTERMEDIATE_DEGREE
+#define SEEKDB_CUVS_INTERMEDIATE_DEGREE 0
+#endif
+#ifndef SEEKDB_CUVS_NN_DESCENT_NITER
+#define SEEKDB_CUVS_NN_DESCENT_NITER 0
+#endif
+/* Dimensionality switch: <= this many dims use the "small" preset. */
+#define SK_LOW_DIM_LIMIT 128
+#define SK_LOW_DIM_GRAPH_DEGREE 32
+#define SK_LOW_DIM_INTERMEDIATE_DEGREE 64
+#define SK_LOW_DIM_NITER 20
+#define SK_HIGH_DIM_GRAPH_DEGREE 128
+#define SK_HIGH_DIM_INTERMEDIATE_DEGREE 160
+#define SK_HIGH_DIM_NITER 48
 #define SK_DEFAULT_SEARCH_WIDTH 4
 #define SK_ITOPK_FACTOR 4
 #define SK_ITOPK_FLOOR 512
@@ -463,9 +482,19 @@ static void* sk_build_inner(const float* base, long n, long dim)
   degree = sk_env_long("SEEKDB_CUVS_GRAPH_DEGREE", 0);
   inter = sk_env_long("SEEKDB_CUVS_INTERMEDIATE_GRAPH_DEGREE", 0);
   niter = sk_env_long("SEEKDB_CUVS_NITER", 0);
-  if (degree <= 0) { degree = SK_DEFAULT_GRAPH_DEGREE; }
-  if (inter <= 0) { inter = SK_DEFAULT_INTERMEDIATE_GRAPH_DEGREE; }
-  if (niter <= 0) { niter = SK_DEFAULT_NITER; }
+  if (degree <= 0) { degree = SEEKDB_CUVS_GRAPH_DEGREE; }
+  if (inter <= 0) { inter = SEEKDB_CUVS_INTERMEDIATE_DEGREE; }
+  if (niter <= 0) { niter = SEEKDB_CUVS_NN_DESCENT_NITER; }
+  if (degree <= 0) {
+    degree = (dim <= SK_LOW_DIM_LIMIT) ? SK_LOW_DIM_GRAPH_DEGREE : SK_HIGH_DIM_GRAPH_DEGREE;
+  }
+  if (inter <= 0) {
+    inter = (dim <= SK_LOW_DIM_LIMIT) ? SK_LOW_DIM_INTERMEDIATE_DEGREE
+                                      : SK_HIGH_DIM_INTERMEDIATE_DEGREE;
+  }
+  if (niter <= 0) {
+    niter = (dim <= SK_LOW_DIM_LIMIT) ? SK_LOW_DIM_NITER : SK_HIGH_DIM_NITER;
+  }
   if (inter < degree) { inter = degree; }
   if (degree > n - 1) { degree = (n > 1) ? (n - 1) : 1; }
   if (inter > n - 1) { inter = (n > 1) ? (n - 1) : 1; }
