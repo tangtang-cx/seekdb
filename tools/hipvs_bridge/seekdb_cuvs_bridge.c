@@ -473,11 +473,16 @@ inline_call:
 static void* sk_build_inner(const float* base, long n, long dim)
 {
   sk_cuvs_index* h = NULL;
+  void* dev = NULL;
   size_t bytes = 0;
+  int registered = 0;
+  int host_built = 0;
   long degree, inter, niter;
   const char* algo;
   int64_t shape[2];
   DLManagedTensor dset;
+  DLManagedTensor view;
+  int keep_dev = 0;
 
   if (base == NULL || n <= 0 || dim <= 0) { return NULL; }
   if (sk_mul_size((size_t)n, (size_t)dim, sizeof(float), &bytes) != 0) { return NULL; }
@@ -533,24 +538,75 @@ static void* sk_build_inner(const float* base, long n, long dim)
     goto fail;
   }
 
-  /* cuVS copies the dataset to the device itself and stages that copy through
-   * pinned memory.  Doing the H2D transfer here instead costs a full
-   * synchronous memcpy of n * dim * 4 bytes inside the timed build window
-   * (hundreds of megabytes for the 250K datasets), so the host tensor is handed
-   * straight to CAGRA and no device dataset is owned by this handle. */
+  /* Preferred path: hand CAGRA the host tensor and let cuVS stage the transfer
+   * itself through pinned memory.  An explicit RMM allocation plus synchronous
+   * H2D memcpy of n * dim * 4 bytes costs several seconds for a 250K x 256
+   * dataset and sits inside the timed build window.
+   *
+   * Not every hipVS build accepts a host dataset (or keeps it attached well
+   * enough to serialize afterwards), and the GPU path must never be lost, so
+   * the proven device-tensor build below is used as an automatic fallback. */
   shape[0] = n;
   shape[1] = dim;
   sk_tensor_host(&dset, (void*)base, shape, kDLFloat, 32);
-  if (cuvsCagraBuild(h->res, h->ip, &dset, h->idx) != CUVS_SUCCESS) {
-    fprintf(stderr, "[seekdb_cuvs] CagraBuild failed: %s\n", sk_err());
-    goto fail;
+  if (cuvsCagraBuild(h->res, h->ip, &dset, h->idx) == CUVS_SUCCESS) {
+    int64_t got_n = 0, got_dim = 0;
+    if (cuvsCagraIndexGetSize(h->idx, &got_n) == CUVS_SUCCESS &&
+        cuvsCagraIndexGetDims(h->idx, &got_dim) == CUVS_SUCCESS &&
+        got_n == n && got_dim == dim) {
+      host_built = 1;
+    }
+  }
+  if (!host_built) {
+    if (sk_env_flag("SEEKDB_CUVS_VERBOSE", 0)) {
+      fprintf(stderr, "[seekdb_cuvs] host-tensor build unavailable, falling back: %s\n", sk_err());
+    }
+    (void)cudaGetLastError();
+    (void)cuvsCagraIndexDestroy(h->idx);
+    h->idx = NULL;
+    if (cuvsCagraIndexCreate(&h->idx) != CUVS_SUCCESS) {
+      fprintf(stderr, "[seekdb_cuvs] CagraIndexCreate failed: %s\n", sk_err());
+      goto fail;
+    }
+    if (cuvsRMMAlloc(h->res, &dev, bytes) != CUVS_SUCCESS) {
+      fprintf(stderr, "[seekdb_cuvs] device dataset alloc failed (%zu bytes): %s\n", bytes, sk_err());
+      goto fail;
+    }
+    if (cudaMemcpy(dev, base, bytes, cudaMemcpyHostToDevice) != cudaSuccess) {
+      fprintf(stderr, "[seekdb_cuvs] dataset H2D failed: %s\n", sk_err());
+      (void)cudaGetLastError();
+      goto fail;
+    }
+    sk_tensor(&dset, dev, shape, kDLFloat, 32);
+    if (cuvsCagraBuild(h->res, h->ip, &dset, h->idx) != CUVS_SUCCESS) {
+      fprintf(stderr, "[seekdb_cuvs] CagraBuild failed: %s\n", sk_err());
+      goto fail;
+    }
+    /* Only keep the buffer alive when the index points into it. */
+    memset(&view, 0, sizeof(view));
+    if (cuvsCagraIndexGetDataset(h->idx, &view) == CUVS_SUCCESS) {
+      const uintptr_t d0 = (uintptr_t)dev;
+      const uintptr_t d1 = d0 + bytes;
+      const uintptr_t got = (uintptr_t)view.dl_tensor.data;
+      if (got >= d0 && got < d1) { keep_dev = 1; }
+      if (view.deleter != NULL) {
+        view.deleter(&view);
+      }
+    } else {
+      keep_dev = 1;
+      (void)cudaGetLastError();
+    }
   }
 
   h->n = n;
   h->dim = dim;
-  h->dev_dataset = NULL;
-  h->dev_dataset_bytes = 0;
-  h->owns_dev_dataset = 0;
+  if (keep_dev) {
+    h->dev_dataset = dev;
+    h->dev_dataset_bytes = bytes;
+    h->owns_dev_dataset = 1;
+    dev = NULL;
+  }
+  (void)registered;
 
   if (sk_handle_init(h) != 0) {
     fprintf(stderr, "[seekdb_cuvs] handle init failed\n");
@@ -567,6 +623,7 @@ static void* sk_build_inner(const float* base, long n, long dim)
   return h;
 
 fail:
+  if (dev != NULL && h->res != 0) { (void)cuvsRMMFree(h->res, dev, bytes); }
   if (h->idx != NULL) { (void)cuvsCagraIndexDestroy(h->idx); }
   if (h->dev_dataset != NULL && h->res != 0) {
     (void)cuvsRMMFree(h->res, h->dev_dataset, h->dev_dataset_bytes);
