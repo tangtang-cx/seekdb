@@ -1,3 +1,29 @@
+<!-- 2026 OceanBase 大赛 · AI 生态赛题（Qoder）交付说明 · 本 banner 由参赛队伍添加 -->
+# ⚡ 本项目交付物在 `qoder/` 目录（先看这里）
+
+> **赛题**：Build with Qoder——用 Qoder 做一个让学习、科研和工作更高效的项目（questionId 600078）
+> **作品**：数据库代码审查助手 · Qoder × seekdb（15 条确定性规则 + seekdb 混合检索与审查历史落库）
+
+**一条命令验证主功能（零依赖，只用 Python 标准库，数秒结束、退出码 0）：**
+
+```bash
+python run.py            # 仓库根目录转发入口 -> 打印 SELFCHECK PASS (4/4 用例, 15 条规则)
+```
+
+想交互体验（常驻服务）：`python run.py --serve` → <http://127.0.0.1:8501>
+
+| 材料 | 位置 |
+| --- | --- |
+| 运行说明 | [`qoder/RUN.md`](qoder/RUN.md)（自检优先）· [`qoder/README.md`](qoder/README.md) |
+| 验证样例（含预期输出） | [`qoder/VALIDATION.md`](qoder/VALIDATION.md) |
+| Qoder 开发记录 | [`qoder/DEVELOPMENT_LOG.md`](qoder/DEVELOPMENT_LOG.md) · [`qoder/PROMPT.md`](qoder/PROMPT.md) |
+| 项目网站（Qoder Sites 发布） | <https://sql-review-assistant-8ptbxy0nhc9.qoder.zone/> |
+| 规则引擎源码 | [`qoder/reviewer.py`](qoder/reviewer.py)（15 条） |
+
+> Qoder 账号 UID：1224577816929999（用于核对站点归属与使用记录）
+
+---
+
 <div align="center">
 
 <picture>

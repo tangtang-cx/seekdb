@@ -188,32 +188,7 @@
 </header>
 
 <main>
-
-<h2>① 解决的问题</h2>
-<div class="grid">
-  <div class="card">
-    <h3>评审靠人肉，慢且不稳</h3>
-    <p>写完 SQL 不知道会不会全表扫、有没有索引失效；评审时凭经验挑刺，漏项；新人反复踩同样的坑（深分页、索引列套函数、<code>SELECT *</code>）。</p>
-  </div>
-  <div class="card">
-    <h3>本项目怎么解决</h3>
-    <p>把 15 条 OceanBase / MySQL 通用反模式固化成<strong>确定性规则</strong>（毫秒级、离线、可进 CI），先用 <strong>seekdb</strong> 混合检索取回官方文档依据，再交给大模型做语义级深审，最后产出<strong>可导出的分级评审报告</strong>。</p>
-  </div>
-</div>
-
-<h2>② 核心功能</h2>
-<div class="card">
-  <table>
-    <tr><th style="width:190px">功能</th><th>说明</th></tr>
-    <tr><td>静态规则扫描</td><td>15 条规则分 🔴阻断 / 🟠警告 / 🔵提示，每条给出「问题 + 建议 + 命中片段」，可导出 Markdown / JSON</td></tr>
-    <tr><td>seekdb 医书依据</td><td>每次审查先在 seekdb 里做「向量 + 全文 + RRF」混合检索（融合在 seekdb 内核内完成），把检索到的官方文档片段作为审查依据，界面可展开核对</td></tr>
-    <tr><td>审查历史落库</td><td>每一轮审查结果写回 seekdb 的 <code>qoder_review_log</code> 表，界面里的历史列表是实时从 seekdb 查出来的</td></tr>
-    <tr><td>大模型深审</td><td>可选，走 OpenAI 兼容协议（MiniMax / StepFun / 魔搭皆可），把检索到的依据一起喂给模型</td></tr>
-    <tr><td>回归测试</td><td>22 个规则用例 + 1 个 Streamlit UI 冒烟用例，全部本地可跑</td></tr>
-  </table>
-</div>
-
-<h2>③ 现场体验：改下面的 SQL，点「开始审查」</h2>
+<h2>① 现场体验：改下面的 SQL，点「开始审查」</h2>
 <div class="card">
   <label for="sql">待审查 SQL / DDL</label>
   <textarea id="sql" spellcheck="false">SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id
@@ -233,6 +208,31 @@ LIMIT 20, 200000;</textarea>
     <div class="metric info"><b id="c-info">0</b><span>🔵 提示</span></div>
   </div>
   <div id="out"></div>
+</div>
+
+
+<h2>② 解决的问题</h2>
+<div class="grid">
+  <div class="card">
+    <h3>评审靠人肉，慢且不稳</h3>
+    <p>写完 SQL 不知道会不会全表扫、有没有索引失效；评审时凭经验挑刺，漏项；新人反复踩同样的坑（深分页、索引列套函数、<code>SELECT *</code>）。</p>
+  </div>
+  <div class="card">
+    <h3>本项目怎么解决</h3>
+    <p>把 15 条 OceanBase / MySQL 通用反模式固化成<strong>确定性规则</strong>（毫秒级、离线、可进 CI），先用 <strong>seekdb</strong> 混合检索取回官方文档依据，再交给大模型做语义级深审，最后产出<strong>可导出的分级评审报告</strong>。</p>
+  </div>
+</div>
+
+<h2>③ 核心功能</h2>
+<div class="card">
+  <table>
+    <tr><th style="width:190px">功能</th><th>说明</th></tr>
+    <tr><td>静态规则扫描</td><td>15 条规则分 🔴阻断 / 🟠警告 / 🔵提示，每条给出「问题 + 建议 + 命中片段」，可导出 Markdown / JSON</td></tr>
+    <tr><td>seekdb 医书依据</td><td>每次审查先在 seekdb 里做「向量 + 全文 + RRF」混合检索（融合在 seekdb 内核内完成），把检索到的官方文档片段作为审查依据，界面可展开核对</td></tr>
+    <tr><td>审查历史落库</td><td>每一轮审查结果写回 seekdb 的 <code>qoder_review_log</code> 表，界面里的历史列表是实时从 seekdb 查出来的</td></tr>
+    <tr><td>大模型深审</td><td>可选，走 OpenAI 兼容协议（MiniMax / StepFun / 魔搭皆可），把检索到的依据一起喂给模型</td></tr>
+    <tr><td>回归测试</td><td>22 个规则用例 + 1 个 Streamlit UI 冒烟用例，全部本地可跑</td></tr>
+  </table>
 </div>
 
 <h2>④ 与 seekdb 的实际结合</h2>
