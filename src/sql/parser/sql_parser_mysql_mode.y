@@ -497,7 +497,7 @@ END_P SET_VAR DELIMITER
 %type <node> dynamic_sampling_hint
 %type <node> skip_index_type opt_skip_index_type_list
 %type <node> vec_index_params vec_index_param vec_index_param_value opt_with_vector_index_parameters
-%type <node> json_table_expr unnest_expr read_csv_expr read_csv_param_list read_csv_param mock_jt_on_error_on_empty jt_column_list json_table_column_def
+%type <node> json_table_expr unnest_expr read_csv_expr read_csv_alias read_csv_param_list read_csv_param mock_jt_on_error_on_empty jt_column_list json_table_column_def
 %type <node> json_table_ordinality_column_def json_table_exists_column_def json_table_value_column_def json_table_nested_column_def
 %type <node> opt_value_on_empty_or_error_or_mismatch opt_on_mismatch
 %type <node> table_values_clause table_values_clause_with_order_by_and_limit values_row_list row_value
@@ -17433,20 +17433,34 @@ JSON '(' column_name ')' STORE AS '(' lob_storage_parameters ')'
 ;
 
 read_csv_expr:
-READ_CSV '(' expr ')'
+READ_CSV '(' expr ')' read_csv_alias
 {
-  malloc_non_terminal_node($$, result->malloc_pool_, T_READ_CSV_EXPRESSION, 2, $3, NULL);
+  malloc_non_terminal_node($$, result->malloc_pool_, T_READ_CSV_EXPRESSION, 3, $3, NULL, $5);
 }
-| READ_CSV '(' expr ',' read_csv_param_list ')'
+| READ_CSV '(' expr ',' read_csv_param_list ')' read_csv_alias
 {
-  malloc_non_terminal_node($$, result->malloc_pool_, T_READ_CSV_EXPRESSION, 2, $3, $5);
+  malloc_non_terminal_node($$, result->malloc_pool_, T_READ_CSV_EXPRESSION, 3, $3, $5, $7);
+}
+;
+
+read_csv_alias:
+{
+  $$ = NULL;
+}
+| AS relation_name
+{
+  $$ = $2;
+}
+| NAME_OB
+{
+  $$ = $1;
 }
 ;
 
 read_csv_param_list:
 read_csv_param
 {
-  $$ = $1;
+  malloc_non_terminal_node($$, result->malloc_pool_, T_LINK_NODE, 1, $1);
 }
 | read_csv_param_list ',' read_csv_param
 {
