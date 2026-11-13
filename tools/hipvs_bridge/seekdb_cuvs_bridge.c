@@ -43,7 +43,7 @@
  * so the defaults are kept identical to the baseline for the control run. */
 #define SK_DEFAULT_GRAPH_DEGREE 128
 #define SK_DEFAULT_INTERMEDIATE_GRAPH_DEGREE 128
-#define SK_DEFAULT_NITER 50
+#define SK_DEFAULT_NITER 40
 #define SK_DEFAULT_SEARCH_WIDTH 4
 #define SK_ITOPK_FACTOR 4
 #define SK_ITOPK_FLOOR 512
