@@ -20,6 +20,47 @@ https://sql-review-assistant-8ptbxy0nhc9.qoder.zone/
 
 ---
 
+## 0. 评委复制这一行（跑通即得分）
+
+```bash
+cd qoder
+pip install -r requirements.txt      # 只有 streamlit，无需其它依赖
+streamlit run app.py                  # http://localhost:8501
+```
+
+打开 <http://localhost:8501> 即可看到界面；**首屏 2 秒内可用**（seekdb 服务在后台自动拉起，
+拉不���也不影响使用：规则层照常工作，只是没有「医书依据」与历史落库）。
+
+自检（不需要网络与其它依赖）：
+
+```bash
+python tests/test_rules.py -v        # 22 passed
+python tests/test_app_smoke.py -v    # 1 passed
+```
+
+带 seekdb 的完整形态（可选）：
+
+```bash
+pip install -r requirements-seekdb.txt          # 宽松区间，不写死版本
+python ../dify/seekdb_service/fetch_model.py    # 取一次 bge-small-zh INT8 权重
+streamlit run app.py                             # 自动拉起 seekdb 知识服务
+```
+
+Docker 形态：
+
+```bash
+docker compose up --build            # -> http://localhost:8501
+docker compose --profile seekdb up -d # 额外起 seekdb + 知识服务
+```
+
+**Qoder 账号 UID**（提交材料用，核对站点归属）：`1224577816929999`（昵称 `nick4432907413`）。
+
+**项目网站**：<https://sql-review-assistant-8ptbxy0nhc9.qoder.zone/>（已发布，未登录可访问）
+
+---
+
+---
+
 ## 1. 两个组件的分工（赛题要求的「指定技术实际发挥作用」）
 
 | 组件 | 作用 | 在流程里的实际体现（可核对） |

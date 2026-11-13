@@ -152,7 +152,7 @@ with st.sidebar:
     use_kb = st.checkbox("用 seekdb 检索审查依据", value=True)
     save_to_kb = st.checkbox("把审查记录写回 seekdb", value=True)
     with st.spinner("连接/启动 seekdb…"):
-        status = ensure_service(kb_url)
+        status = ensure_service(kb_url, background=True)
     if status.get("ok"):
         st.success(f"seekdb 已就绪 · 模式 {status.get('mode')} · 知识块 {status.get('chunks')} · 历史 {status.get('reviews')}")
     else:
