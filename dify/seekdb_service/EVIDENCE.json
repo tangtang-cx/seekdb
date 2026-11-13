@@ -1,0 +1,113 @@
+{
+  "engine": "seekdb",
+  "mode": "embedded",
+  "embedding": "bge-small-zh-v1.5 / INT8 ONNX / 512-dim cosine",
+  "table": "dify_knowledge_base",
+  "indexes": [
+    "FULLTEXT idx_fts (document) WITH PARSER ik",
+    "VECTOR idx_vec (embedding) type=hnsw lib=vsag"
+  ],
+  "chunks": 19,
+  "queries": [
+    {
+      "query": "HNSW 向量索引的建表语句是什么？",
+      "plan_has_fulltext_branch": true,
+      "plan_has_vector_branch": true,
+      "hits": [
+        {
+          "title": "seekdb / OceanBase 向量库速查（本文为团队实测整理）",
+          "source": "01-seekdb-向量库速查.md",
+          "score": null,
+          "snippet": "# seekdb / OceanBase 向量库速查（本文为团队实测整理）\n\n> 结论来源：本仓库 `stepfun/tools/verify_seekdb_contract.py` 在真实 seekdb 内核上跑通的语句，\n> 以及 `stepfun/server/seekdb-store.mjs` 通过 seekd"
+        },
+        {
+          "title": "seekdb / OceanBase 向量库速查（本文为团队实测整理）",
+          "source": "01-seekdb-向量库速查.md",
+          "score": null,
+          "snippet": ",\n       m=16, ef_construction=200, ef_search=64)\n) ORGANIZATION = HEAP\n```\n\n要点：\n\n- `VECTOR(n)` 是原生向量列，`n` 是维度，必须与 embedding 模型输出维度一致。\n- `FULLTEXT INDEX ... WIT"
+        },
+        {
+          "title": "端侧（浏览器内）向量化与 INT8 / FP16 量化",
+          "source": "03-端侧向量化与量化对比.md",
+          "score": null,
+          "snippet": "向量写入与检索在 seekdb 内核完成，不能把向量存到别的库再在客户端过滤；\n- 评测时不能依赖任何外部网络请求（模型权重已本地化）。\n\n## 6. 常见坑\n\n| 现象 | 原因 | 处理 |\n| --- | --- | --- |\n| 首屏白屏很久 | 在下载 22.8 MiB INT8 | 提前预热 + 显示进度"
+        }
+      ]
+    },
+    {
+      "query": "混合检索的 RRF 融合是怎么做的？",
+      "plan_has_fulltext_branch": true,
+      "plan_has_vector_branch": true,
+      "hits": [
+        {
+          "title": "混合检索（向量 + 全文）与 RRF 融合",
+          "source": "02-混合检索与RRF.md",
+          "score": null,
+          "snippet": "个 JSON 变量 `@search_parm` 描述混合检索请求，\n再由 `DBMS_HYBRID_SEARCH.GET_SQL` 把它翻译成可执行 SQL：\n\n```json\n{\n  \"query\": { \"query_string\": { \"fields\": [\"document\"], \"query\": \"混合检"
+        },
+        {
+          "title": "混合检索（向量 + 全文）与 RRF 融合",
+          "source": "02-混合检索与RRF.md",
+          "score": null,
+          "snippet": "# 混合检索（向量 + 全文）与 RRF 融合\n\n> 结论来源：`stepfun/tools/verify_seekdb_contract.py`，该脚本在真实 seekdb 内核上验证了\n> `DBMS_HYBRID_SEARCH.GET_SQL` 能生成可执行计划，且计划中同时包含全文分支与向量分支。\n\n## 1."
+        },
+        {
+          "title": "混合检索（向量 + 全文）与 RRF 融合",
+          "source": "02-混合检索与RRF.md",
+          "score": null,
+          "snippet": "与列定义一致 |\n| `rank.rrf` | 融合方式，`{}` 表示使用默认 k 常数的 RRF |\n| `size` | 融合后返回条数 |\n\n调用方式：\n\n```sql\nSET @search_parm = '{\"query\":{\"query_string\":{\"fields\":[\"document\"],\"qu"
+        }
+      ]
+    },
+    {
+      "query": "端侧 INT8 量化会损失多少召回率？",
+      "plan_has_fulltext_branch": true,
+      "plan_has_vector_branch": true,
+      "hits": [
+        {
+          "title": "端侧（浏览器内）向量化与 INT8 / FP16 量化",
+          "source": "03-端侧向量化与量化对比.md",
+          "score": null,
+          "snippet": "B | 2.00x |\n| INT8 | 22.8 MiB | 3.97x |\n\n量化质量（同一浏览器、同一 12 段语料、6 条查询，精确余弦 Top-5）：\n\n| 指标 | INT8 | FP32 |\n| --- | --- | --- |\n| Recall@5 | 0.917 | 0.917 |\n| Top-5 "
+        },
+        {
+          "title": "端侧（浏览器内）向量化与 INT8 / FP16 量化",
+          "source": "03-端侧向量化与量化对比.md",
+          "score": null,
+          "snippet": "# 端侧（浏览器内）向量化与 INT8 / FP16 量化\n\n> 结论来源：`stepfun/TECH_REPORT.md`，全部为本机（Edge headless + WASM）实测数据。\n\n## 1. 模型选择\n\n| 项 | 值 |\n| --- | --- |\n| 模型 | `Xenova/bge-small-zh"
+        },
+        {
+          "title": "AMD ROCm / hipVS（cuVS CAGRA）加速 HNSW 索引构建",
+          "source": "04-AMD-GPU加速HNSW.md",
+          "score": null,
+          "snippet": "× 128 = 12800\noptimized:  40 ×  96 =  3840\nratio:      12800 / 3840 = 3.33x\n```\n\n实测还要叠加 CAGRA 内部固定开销、数据传输与 GPU 利用率影响，\n团队预估整体 **2.8x ~ 3.5x**，覆盖 3.0x 门槛。\n\n## 4. "
+        }
+      ]
+    },
+    {
+      "query": "AMD GPU 加速 HNSW 的建图收益有多少？",
+      "plan_has_fulltext_branch": true,
+      "plan_has_vector_branch": true,
+      "hits": [
+        {
+          "title": "AMD ROCm / hipVS（cuVS CAGRA）加速 HNSW 索引构建",
+          "source": "04-AMD-GPU加速HNSW.md",
+          "score": null,
+          "snippet": "# AMD ROCm / hipVS（cuVS CAGRA）加速 HNSW 索引构建\n\n> 结论来源：`amd/docs/PERF_NOTES.md`（团队在 `amd-cagra-solution` 分支的实现与推演）。\n> 注意：本机是 NVIDIA GB10（ARM64 + CUDA 13），无 `/dev/kf"
+        },
+        {
+          "title": "AMD ROCm / hipVS（cuVS CAGRA）加速 HNSW 索引构建",
+          "source": "04-AMD-GPU加速HNSW.md",
+          "score": null,
+          "snippet": "查询侧 `search_width` 默认 4；recall 有余量且要吞吐可试 2（`itopk_size` 仍保持 ≥ 12）。\n\n## 5. 环境变量\n\n| 变量 | 默认 | 说明 |\n| --- | --- | --- |\n| `SEEKDB_CUVS_GRAPH_DEGREE` | 96 | CAGRA 输"
+        },
+        {
+          "title": "AMD ROCm / hipVS（cuVS CAGRA）加速 HNSW 索引构建",
+          "source": "04-AMD-GPU加速HNSW.md",
+          "score": null,
+          "snippet": "3.0x；\n- 查询加速 ≥ 1.5x；\n- recall 与同轮基线相差 ≤ 0.005。\n\n## 2. 官方冻结基线（commit `634888d9`）\n\n| 项目 | 基线 |\n| --- | --- |\n| 建图算法 | `NN_DESCENT` |\n| `graph_degree` | 128 |\n| `i"
+        }
+      ]
+    }
+  ]
+}

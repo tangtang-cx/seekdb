@@ -1,0 +1,234 @@
+app:
+  description: SQL 老中医 · 数据库问诊室（RAG 版）。在主应用基础上接入 OceanBase / seekdb
+    知识库，回答时引用检索到的原文片段。
+  icon: 📚
+  icon_background: '#EFF1F5'
+  icon_type: emoji
+  mode: advanced-chat
+  name: SQL 老中医 · 数据库问诊室（RAG 版）
+  use_icon_as_answer_icon: false
+dependencies: []
+kind: app
+version: 0.6.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+        - .sql
+        - .md
+        - .txt
+      allowed_file_types:
+        - custom
+      allowed_file_upload_methods:
+        - local_file
+        - remote_url
+      enabled: true
+      fileUploadConfig:
+        attachment_image_file_size_limit: 2
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        file_upload_limit: 20
+        image_file_batch_limit: 10
+        image_file_size_limit: 10
+        single_chunk_attachment_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+          - local_file
+          - remote_url
+      number_limits: 3
+    opening_statement: >-
+      📚 SQL 老中医 · 数据库问诊室（RAG 版）：老中医这次先翻一翻《OceanBase / seekdb
+      医书》，再给你开方。答案会引用书里的原文。
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions:
+      - HNSW 向量索引的建表语句是什么？
+      - 混合检索（向量 + 全文）如何用 RRF 融合？
+      - 端侧 INT8 量化会损失多少召回率？
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+      - data:
+          sourceType: start
+          targetType: knowledge-retrieval
+        id: start-kb
+        source: start
+        sourceHandle: source
+        target: kb
+        targetHandle: target
+        type: custom
+      - data:
+          sourceType: knowledge-retrieval
+          targetType: llm
+        id: kb-llm
+        source: kb
+        sourceHandle: source
+        target: llm
+        targetHandle: target
+        type: custom
+      - data:
+          sourceType: llm
+          targetType: answer
+        id: llm-answer
+        source: llm
+        sourceHandle: source
+        target: answer
+        targetHandle: target
+        type: custom
+    nodes:
+      - id: start
+        type: custom
+        position:
+          x: 80
+          y: 282
+        positionAbsolute:
+          x: 80
+          y: 282
+        width: 242
+        height: 90
+        sourcePosition: right
+        targetPosition: left
+        selected: false
+        data:
+          type: start
+          title: 开始
+          desc: ''
+          variables: []
+          selected: false
+      - id: kb
+        type: custom
+        position:
+          x: 400
+          y: 282
+        positionAbsolute:
+          x: 400
+          y: 282
+        width: 242
+        height: 100
+        sourcePosition: right
+        targetPosition: left
+        selected: false
+        data:
+          type: knowledge-retrieval
+          title: 翻医书（知识检索）
+          desc: ''
+          dataset_ids: []
+          retrieval_mode: multiple
+          multiple_retrieval_config:
+            top_k: 4
+            score_threshold_enabled: false
+            score_threshold: null
+            reranking_enable: false
+            reranking_mode: reranking_model
+            reranking_model:
+              reranking_provider_name: ''
+              reranking_model_name: ''
+          selected: false
+      - id: llm
+        type: custom
+        position:
+          x: 720
+          y: 282
+        positionAbsolute:
+          x: 720
+          y: 282
+        width: 242
+        height: 98
+        sourcePosition: right
+        targetPosition: left
+        selected: false
+        data:
+          type: llm
+          title: 老中医坐诊
+          desc: ''
+          model:
+            provider: ''
+            name: ''
+            mode: chat
+            completion_params:
+              temperature: 0.8
+              max_tokens: 2048
+          prompt_template:
+            - role: system
+              text: >-
+                你是「SQL 老中医」，一位专治数据库疑难杂症的老派中医，兼 OceanBase /
+                seekdb 资深工程师。你手上有一本《OceanBase / seekdb 医书》（知识库检索结果）。
+                严格按下面的结构回答，使用 Markdown 分节：
+                ### 📖 医书原文（引用）
+                列出你引用的知识库片段标题与关键句，并标注引用编号。
+                ### 🩺 望闻问切（病灶诊断）
+                结合医书与病历，列出 2-4 条具体问题，说明「症状 → 病因」。
+                ### 💊 药方（可直接复制）
+                给出优化后的完整 SQL 或配置片段，能直接粘贴运行。
+                ### 🚫 忌口（千万别写）
+                列出导致性能或正确性问题的写法并说明原因。
+                ### 🧘 养生建议
+                2-3 条工程实践建议。
+                ### 🎋 医嘱小笺
+                一句俏皮话 + 最该先改的那一处。
+                硬性要求：答案必须以知识库检索结果为依据；知识库没有覆盖的内容，明确说明
+                「医书里没有这一条」，不要编造 API。涉及语法时使用真实正确的写法
+                （VECTOR(n)、VECTOR INDEX ... WITH(distance=cosine, type=hnsw, lib=vsag, ...)、
+                FULLTEXT INDEX ... WITH PARSER ik、dbms_index_manager.refresh()）。
+            - role: user
+              text: |-
+                【医书原文】
+                {{#context#}}
+
+                【病历】
+                {{#sys.query#}}
+          context:
+            enabled: true
+            variable_selector:
+              - kb
+              - result
+          memory:
+            query_prompt_template: '{{#sys.query#}}'
+            window:
+              enabled: true
+              size: 10
+          vision:
+            enabled: false
+          variables: []
+          selected: false
+      - id: answer
+        type: custom
+        position:
+          x: 1040
+          y: 282
+        positionAbsolute:
+          x: 1040
+          y: 282
+        width: 242
+        height: 90
+        sourcePosition: right
+        targetPosition: left
+        selected: false
+        data:
+          type: answer
+          title: 出方
+          desc: ''
+          answer: '{{#llm.text#}}'
+          variables: []
+          selected: false
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.8
+  rag_pipeline_variables: []

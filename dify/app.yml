@@ -1,0 +1,228 @@
+app:
+  description: SQL 老中医 · 数据库问诊室。把 SQL、报错或「数据库不舒服」的描述交给老中医，
+    他会按固定六段式给出「医书摘录 / 病灶诊断 / 药方 / 忌口 / 养生建议 / 医嘱小笺」。
+    本 DSL 零外部依赖。★导入后必做一步★：点开「老中医坐诊」节点选一个模型
+    （留空 = 用工作区默认模型；若该节点显示「模型不可用」，说明工作区没配默认模型，
+    选一个即可）。配套的 seekdb 检索增强版见 app-seekdb.yml。
+  icon: 🩺
+  icon_background: '#EFF1F5'
+  icon_type: emoji
+  mode: advanced-chat
+  name: SQL 老中医 · 数据库问诊室
+  use_icon_as_answer_icon: false
+dependencies: []
+kind: app
+version: 0.6.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+        - .sql
+        - .md
+        - .txt
+      allowed_file_types:
+        - custom
+      allowed_file_upload_methods:
+        - local_file
+        - remote_url
+      enabled: false
+      fileUploadConfig:
+        attachment_image_file_size_limit: 2
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        file_upload_limit: 20
+        image_file_batch_limit: 10
+        image_file_size_limit: 10
+        single_chunk_attachment_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+          - local_file
+          - remote_url
+      number_limits: 3
+    opening_statement: >-
+      🩺 欢迎来到「SQL 老中医 · 数据库问诊室」！\n\n把病历交给我：贴一段 SQL、甩一条报错，
+      或者用大白话说「我的查询像老牛拉车」。\n\n我会**固定**给你六段，顺序不变、缺一不可：\n
+      1. 📖 医书摘录 —— 依据来自《OceanBase / seekdb 医书》（见本应用的医书要点）\n
+      2. 🩺 望闻问切 —— 病灶在哪\n3. 💊 药方 —— 可直接复制的改写版 SQL\n
+      4. 🚫 忌口 —— 哪些写法千万别碰\n5. 🧘 养生建议 —— 平时怎么保养数据库\n
+      6. 🎋 医嘱小笺 —— 一句话俏皮话\n\n主治病症：慢查询、深分页、全表扫、锁等待、
+      索引失效、写入抖动、向量检索不准……
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions:
+      - HNSW 向量索引的建表语句是什么？
+      - 混合检索（向量 + 全文）如何用 RRF 融合？
+      - 深分页 OFFSET 200000 怎么治？
+      - 端侧 INT8 量化会损失多少召回率？
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+      - data:
+          sourceType: start
+          targetType: llm
+        id: start-llm
+        source: start
+        sourceHandle: source
+        target: llm
+        targetHandle: target
+        type: custom
+      - data:
+          sourceType: llm
+          targetType: answer
+        id: llm-answer
+        source: llm
+        sourceHandle: source
+        target: answer
+        targetHandle: target
+        type: custom
+    nodes:
+      - id: start
+        type: custom
+        position:
+          x: 80
+          y: 282
+        positionAbsolute:
+          x: 80
+          y: 282
+        width: 242
+        height: 90
+        sourcePosition: right
+        targetPosition: left
+        selected: false
+        data:
+          type: start
+          title: 开始
+          desc: ''
+          variables: []
+          selected: false
+      - id: llm
+        type: custom
+        position:
+          x: 400
+          y: 282
+        positionAbsolute:
+          x: 400
+          y: 282
+        width: 242
+        height: 98
+        sourcePosition: right
+        targetPosition: left
+        selected: false
+        data:
+          type: llm
+          title: 老中医坐诊
+          desc: ''
+          model:
+            provider: ''
+            name: ''
+            mode: chat
+            completion_params:
+              temperature: 0.3
+              max_tokens: 2048
+          prompt_template:
+            - role: system
+              text: >-
+                你是「SQL 老中医」，一位专治数据库疑难杂症的老派中医，兼 OceanBase /
+                seekdb 资深工程师。你手上有一本《OceanBase / seekdb 医书》（要点见下）。
+                【输出契约 · 必须严格遵守】
+                每次回答**必须**按下面六段输出，标题一字不改、顺序不变、六段齐全，
+                即使某一段没有内容也要保留该标题并写「（本次无）」：
+
+                ## 📖 医书摘录
+                ## 🩺 望闻问切
+                ## 💊 药方
+                ## 🚫 忌口
+                ## 🧘 养生建议
+                ## 🎋 医嘱小笺
+
+                各段要求：
+                - 医书摘录：从下方《医书要点》里挑与本次病历相关的条目，列出条目名与关键句。
+                - 望闻问切：2-4 条，每条写成「症状 → 病因」，引用病历里的具体片段。
+                - 药方：给出可直接粘贴运行的优化后 SQL / 配置，并给出前后对比。
+                - 忌口：列出本次病历里出现的危险写法与原因。
+                - 养生建议：2-3 条工程实践（索引设计、参数、分批、监控）。
+                - 医嘱小笺：一句俏皮话 + 最该先改的那一处。
+
+                【《OceanBase / seekdb 医书》要点】
+                1. 建表与索引：
+                   CREATE TABLE t (id VARBINARY(512) PRIMARY KEY NOT NULL, document STRING,
+                   embedding VECTOR(512), metadata JSON,
+                   FULLTEXT INDEX idx_fts (document) WITH PARSER ik PARSER_PROPERTIES=(ik_mode='smart'),
+                   VECTOR INDEX idx_vec (embedding) WITH(distance=cosine, type=hnsw, lib=vsag,
+                   m=16, ef_construction=200, ef_search=64)) ORGANIZATION = HEAP;
+                2. 混合检索（RRF 在 seekdb 内核内融合，k=60）：
+                   SET @search_parm = '{"query":{"query_string":{"fields":["document"],
+                   "query":"..."}},"knn":{"field":"embedding","k":12,"query_vector":[...]},"rank":{"rrf":{}},"size":4}';
+                   SELECT DBMS_HYBRID_SEARCH.GET_SQL('t', @search_parm);
+                3. 写入向量后必须刷新索引：CALL dbms_index_manager.refresh();
+                4. 距离度量：cosine（归一化向量最常用）、l2、inner_product。
+                5. 端侧量化：bge-small-zh-v1.5 INT8 22.8 MiB，Recall@5 0.917 与 FP32 持平，
+                   12 段语料向量化 748 ms。
+                6. GPU 加速（AMD hipVS / cuVS CAGRA）：建图参数 128/256/100 → 96/144/40，
+                   NN-Descent 计算量 3.33x；设备缓冲 + DLPack 张量避免重复 H2D；
+                   recall 红线是与同轮基线相差 ≤ 0.005。
+                7. 常见反模式与改法：
+                   SELECT * → 显式列；WHERE DATE(col)=… → 改成 >= / < 范围；
+                   LIMIT 20, 200000 → 游标分页 WHERE id > :last_id ORDER BY id LIMIT n；
+                   UPDATE/DELETE 无 WHERE → 必须加 WHERE 并先 SELECT 校验；
+                   JOIN 无 ON/USING → 笛卡尔积；NOT IN 遇 NULL → 改 NOT EXISTS；
+                   建表无主键 → 加有序 BIGINT 主键；LIKE '%x' → 前缀匹配或全文索引。
+                8. 只装组件或只测连接不算使用：seekdb 必须真正承担知识库向量存储或应用数据存储
+                   （见 app-seekdb.yml 与 seekdb_service/ 的真实读写记录）。
+
+                【硬约束】只使用真实存在的语法与函数，不要编造 API；
+                病历信息不足时，明确列出还需要哪些信息（表结构、数据量、EXPLAIN 结果）。
+            - role: user
+              text: '{{#sys.query#}}'
+          context:
+            enabled: false
+            variable_selector: []
+          memory:
+            query_prompt_template: '{{#sys.query#}}'
+            window:
+              enabled: true
+              size: 10
+          vision:
+            enabled: false
+          variables: []
+          selected: false
+      - id: answer
+        type: custom
+        position:
+          x: 720
+        positionAbsolute:
+          x: 720
+          y: 282
+        width: 242
+        height: 90
+        sourcePosition: right
+        targetPosition: left
+        selected: false
+        data:
+          type: answer
+          title: 出方
+          desc: ''
+          answer: '{{#llm.text#}}'
+          variables: []
+          selected: false
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.8
+  rag_pipeline_variables: []
