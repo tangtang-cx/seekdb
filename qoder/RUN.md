@@ -2,13 +2,21 @@
 
 > 评审按本文件从零跑起，即可体验作品的主要功能。
 
-## 0. 一句话
+## 0. 一句话（零依赖，离线可跑）
 
 ```bash
 cd qoder
-pip install -r requirements.txt      # 只有 streamlit，不写死版本
-streamlit run app.py                # -> http://localhost:8501
+python run.py                     # 只用 Python 标准库 -> http://127.0.0.1:8501
 ```
+
+`run.py` 不需要 pip install、不需要网络、不需要 seekdb 在线：
+`/` 是交互式审查界面（粘 SQL → 点「开始审查」→ 三级结果），
+`/health` 健康检查，`POST /api/review` 是同一套 15 条规则引擎的 JSON 接口。
+启动后自检：`curl http://127.0.0.1:8501/health` 应返回 `{"ok": true, ...}`。
+
+> 想要完整 Streamlit 界面再装依赖（可选，不是运行前提）：
+> `pip install -r requirements.txt && streamlit run app.py`
+> 装不上也不影响主要功能——`app.py` 在没有 streamlit 时会自动降级起 `run.py` 同款服务。
 
 **首屏 2 秒内可用**：seekdb 知识服务在后台自动拉起；拉不起来也不影响使用
 （规则引擎照常工作，只是没有「医书依据」与历史落库）。
@@ -17,15 +25,21 @@ streamlit run app.py                # -> http://localhost:8501
 
 | 项 | 版本 | 必需 |
 | --- | --- | --- |
-| Python | 3.9 ~ 3.13 | ✅ |
-| streamlit | ≥1.32,<2 | ✅（唯一必装依赖） |
+| Python | 3.9 ~ 3.13 | ✅（`run.py` 零依赖路径只要 Python 就能跑） |
+| streamlit | ≥1.32,<2 | ⭕（可选：完整 Streamlit 界面） |
 | Docker + compose | 20.10+ | ⭕（可选） |
 | CPU / 内存 | 2 核 / 4 GB | —（无 GPU 需求） |
 | 推理服务 | 任意 OpenAI 兼容（MiniMax / StepFun / 魔搭 / 通义） | ⭕（不填则只跑规则层） |
 
 ## 2. 三种启动形态
 
-### A. 最简（只装 streamlit）
+### A. 零依赖（推荐，离线/评测沙箱可用）
+
+```bash
+python run.py                     # -> http://127.0.0.1:8501
+```
+
+### B. 完整 Streamlit 界面（可选）
 
 ```bash
 pip install -r requirements.txt
