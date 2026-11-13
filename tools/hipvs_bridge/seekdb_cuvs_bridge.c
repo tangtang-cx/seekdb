@@ -494,7 +494,7 @@ static void* sk_build_inner(const float* base, long n, long dim)
     fprintf(stderr, "[seekdb_cuvs] device dataset alloc failed (%zu bytes): %s\n", bytes, sk_err());
     goto fail;
   }
-  if (sk_env_flag("SEEKDB_CUVS_PIN_BUILD_INPUT", 1)) {
+  if (sk_env_flag("SEEKDB_CUVS_PIN_BUILD_INPUT", 0)) {
     if (cudaHostRegister((void*)base, bytes, cudaHostRegisterDefault) == cudaSuccess) {
       registered = 1;
     } else {
