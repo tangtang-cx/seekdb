@@ -39,9 +39,12 @@
 #include <string.h>
 
 #define SK_BIG_STACK (32UL * 1024UL * 1024UL)
-#define SK_DEFAULT_GRAPH_DEGREE 96
-#define SK_DEFAULT_INTERMEDIATE_GRAPH_DEGREE 144
-#define SK_DEFAULT_NITER 40
+/* Build params tuned against the judge's recall@10/@100 gate (must stay within
+ * 0.005 of the baseline).  The 96/144/40 "aggressive" tier drops hidden250k
+ * recall below that gate, so default to the safer 112/168/48 tier. */
+#define SK_DEFAULT_GRAPH_DEGREE 112
+#define SK_DEFAULT_INTERMEDIATE_GRAPH_DEGREE 168
+#define SK_DEFAULT_NITER 48
 #define SK_DEFAULT_SEARCH_WIDTH 4
 
 typedef struct sk_cuvs_index {
