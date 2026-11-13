@@ -20,14 +20,20 @@ OUTPUT=${1:-$SCRIPT_DIR/libseekdb_cuvs_bridge.so}
 
 mkdir -p "$(dirname "$OUTPUT")"
 
+# Extra flags can be injected by CI without editing this file.
+EXTRA_FLAGS=${CUVS_BRIDGE_EXTRA_FLAGS:-}
+
 "$HIPCC" \
   -shared \
   -fPIC \
-  -O2 \
+  -O3 \
+  -DNDEBUG \
+  -pthread \
   -D__HIP_PLATFORM_AMD__ \
   -I"$HIPVS_ROOT/include" \
   -I"$ROCM_ROOT/include" \
   "$SCRIPT_DIR/seekdb_cuvs_bridge.c" \
+  $EXTRA_FLAGS \
   -L"$HIPVS_ROOT/lib" \
   -Wl,-soname,libseekdb_cuvs_bridge.so \
   -Wl,-rpath,"$HIPVS_ROOT/lib:$ROCM_ROOT/lib" \
