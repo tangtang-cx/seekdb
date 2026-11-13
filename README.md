@@ -8,7 +8,10 @@
 
 ```bash
 python run.py            # 仓库根目录转发入口 -> 打印 SELFCHECK PASS (4/4 用例, 15 条规则)
+bash run.sh              # 等价入口（找不到 python3/python 时自动探测，供脚本化评测调用）
 ```
+
+> 不需要 `pip install`：`qoder/requirements.txt` 只有注释，主流程零第三方依赖。
 
 想交互体验（常驻服务）：`python run.py --serve` → <http://127.0.0.1:8501>
 

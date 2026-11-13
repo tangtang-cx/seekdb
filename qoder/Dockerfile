@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 
 # 不装任何第三方包：应用默认入口 run.py 只用标准库，离线环境也能 build & run。
-# 需要完整 Streamlit 界面时再自行 `pip install -r requirements.txt`。
+# 需要完整 Streamlit 界面时再自行 `pip install -r requirements-ui.txt`。
 WORKDIR /app
 COPY . /app
 

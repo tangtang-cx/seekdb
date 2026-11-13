@@ -59,7 +59,7 @@ bash start.sh                      # 等价：自动找 python 后同上
 **③ 完整 Streamlit 界面（可选）与规则回归**：
 
 ```bash
-pip install -r requirements.txt    # 只有 streamlit
+pip install -r requirements-ui.txt # 只有 streamlit（主流程不需要）
 streamlit run app.py               # http://localhost:8501
 ```
 
@@ -114,7 +114,8 @@ docker compose --profile seekdb up -d   # 额外起 seekdb + 知识服务
 | `rules/sql_review_rules.md` | 规则说明，编号与实现一一对应 |
 | `tests/test_rules.py` / `tests/test_app_smoke.py` | 22 + 1 个用例（规则触发/不触发 + Streamlit UI 冒烟） |
 | `PROMPT.md` | Qoder 提示词、生成物与增强点对照表、**Qoder Sites 发布步骤**、开发记录截图清单 |
-| `requirements.txt` / `.env.example` | 依赖与配置样例 |
+| `requirements.txt` / `.env.example` | 依赖声明（主流程零第三方依赖，本文件只有注释）与配置样例 |
+| `requirements-ui.txt` / `requirements-seekdb.txt` | 可选：Streamlit 界面 / 真·seekdb 检索 |
 | `screenshots/` | Qoder 对话截图 + Sites 发布截图 + 运行界面（见 `PROMPT.md` §5） |
 
 在线演示：**Qoder Sites 已发布** —— <https://sql-review-assistant-8ptbxy0nhc9.qoder.zone/>（未登录可打开，页面内可直接体验 15 条规则审查）。
@@ -150,7 +151,7 @@ python run.py --serve  # 或 bash start.sh   ->  http://127.0.0.1:8501
 可选增强（不影响评审主功能）：
 
 ```bash
-pip install -r requirements.txt       # Streamlit 界面：streamlit run app.py
+pip install -r requirements-ui.txt    # Streamlit 界面：streamlit run app.py
 pip install -r requirements-seekdb.txt # 真·seekdb 检索与审查历史落库
 python seekdb_service/fetch_model.py   # 取一次 bge-small-zh INT8 权重（约 23 MiB）
 ```
@@ -161,7 +162,7 @@ python seekdb_service/fetch_model.py   # 取一次 bge-small-zh INT8 权重（�
 2. Sites → 选择 Streamlit 模板 → 启动命令：
 
    ```bash
-   pip install -r requirements.txt && streamlit run app.py --server.port $PORT
+   pip install -r requirements-ui.txt && streamlit run app.py --server.port $PORT
    ```
 
 3. 环境变量：`MODELSCOPE_API_KEY`（或 StepFun / MiniMax 的 Key），以及 `SEEKDB_SERVICE_URL`。

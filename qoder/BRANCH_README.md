@@ -30,13 +30,20 @@ Qoder/
   tests/test_app_smoke.py   # 1 个 Streamlit AppTest 冒烟用例
   PROMPT.md                 # 在 Qoder 里用的提示词、生成物对照表、Qoder Sites 发布步骤
   README.md                 # 完整交付说明
-  requirements.txt / .env.example
+  requirements.txt / .env.example   # requirements.txt 只有注释：主流程零第三方依赖
 ```
 
 ## 评测怎么跑（评委侧，1 分钟）
 
 ```bash
-pip install -r requirements.txt
+python run.py            # 主功能自检：打印 SELFCHECK PASS，退出码 0，零第三方依赖
+python run.py --serve    # 想交互体验：-> http://127.0.0.1:8501（/health、POST /api/review）
+```
+
+以下为可选的完整 Streamlit 界面（需要联网装 streamlit，非主流程）：
+
+```bash
+pip install -r requirements-ui.txt
 export MODELSCOPE_API_KEY=ms-xxxxxxxx      # 或 STEPFUN_API_KEY / MINIMAX_API_KEY
 streamlit run app.py
 ```

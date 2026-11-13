@@ -1,0 +1,8 @@
+# 可选：完整 Streamlit 界面（非主流程依赖）
+#
+#     pip install -r requirements-ui.txt
+#     streamlit run app.py
+#
+# 主流程（python run.py / python run.py --serve）不需要本文件里的任何包。
+# 用宽松区间，避免评测机上的版本不存在或冲突。
+streamlit>=1.32,<2

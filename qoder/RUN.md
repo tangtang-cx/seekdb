@@ -67,7 +67,7 @@ curl -s -X POST localhost:8501/api/review -H "Content-Type: application/json" \
 ### A. 完整 Streamlit 界面
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-ui.txt      # 仅 streamlit；主流程（python run.py）不需要装任何包
 streamlit run app.py                    # 没装 streamlit 时 `python app.py` 会自动降级起 run.py 同款服务
 ```
 
