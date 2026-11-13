@@ -478,7 +478,11 @@ static void* sk_build_inner(const float* base, long n, long dim)
                               strcmp(algo, "iterative_cagra_search") == 0)) {
     h->ip->build_algo = ITERATIVE_CAGRA_SEARCH;
   } else {
-    h->ip->build_algo = NN_DESCENT;
+    /* Let cuVS pick the graph builder: for this dataset size it can select a
+       cheaper construction path than plain NN-Descent, which attacks the
+       fixed part of the build cost (niter is already pinned by the recall
+       gate, so the parameter knob is exhausted). */
+    h->ip->build_algo = AUTO_SELECT;
   }
   h->ip->metric = L2Expanded;
   h->ip->graph_degree = (size_t)degree;
