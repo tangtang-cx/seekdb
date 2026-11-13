@@ -129,6 +129,24 @@ static int sk_mul_size(size_t a, size_t b, size_t c, size_t* out)
   return 0;
 }
 
+/* Host-resident tensor: every public competitor passes the dataset this way and
+   lets cuVS do its own (staged) H2D copy. */
+static void sk_tensor_host(DLManagedTensor* t, void* data, int64_t* shape,
+                           DLDataTypeCode code, int bits)
+{
+  memset(t, 0, sizeof(*t));
+  t->dl_tensor.data = data;
+  t->dl_tensor.device.device_type = kDLCPU;
+  t->dl_tensor.device.device_id = 0;
+  t->dl_tensor.ndim = 2;
+  t->dl_tensor.dtype.code = code;
+  t->dl_tensor.dtype.bits = bits;
+  t->dl_tensor.dtype.lanes = 1;
+  t->dl_tensor.shape = shape;
+  t->dl_tensor.strides = NULL;
+  t->dl_tensor.byte_offset = 0;
+}
+
 static void sk_tensor(DLManagedTensor* t, void* data, int64_t* shape,
                       DLDataTypeCode code, int bits)
 {
@@ -490,10 +508,7 @@ static void* sk_build_inner(const float* base, long n, long dim)
     goto fail;
   }
 
-  if (cuvsRMMAlloc(h->res, &dev, bytes) != CUVS_SUCCESS) {
-    fprintf(stderr, "[seekdb_cuvs] device dataset alloc failed (%zu bytes): %s\n", bytes, sk_err());
-    goto fail;
-  }
+  (void)dev; (void)bytes;
   if (sk_env_flag("SEEKDB_CUVS_PIN_BUILD_INPUT", 0)) {
     if (cudaHostRegister((void*)base, bytes, cudaHostRegisterDefault) == cudaSuccess) {
       registered = 1;
@@ -501,11 +516,7 @@ static void* sk_build_inner(const float* base, long n, long dim)
       (void)cudaGetLastError();
     }
   }
-  if (cudaMemcpy(dev, base, bytes, cudaMemcpyHostToDevice) != cudaSuccess) {
-    fprintf(stderr, "[seekdb_cuvs] dataset H2D failed: %s\n", sk_err());
-    (void)cudaGetLastError();
-    goto fail;
-  }
+  /* cuVS performs the host->device copy itself for a host tensor. */
   if (registered) {
     (void)cudaHostUnregister((void*)base);
     registered = 0;
@@ -513,14 +524,15 @@ static void* sk_build_inner(const float* base, long n, long dim)
 
   shape[0] = n;
   shape[1] = dim;
-  sk_tensor(&dset, dev, shape, kDLFloat, 32);
+  sk_tensor_host(&dset, (void*)base, shape, kDLFloat, 32);
   if (cuvsCagraBuild(h->res, h->ip, &dset, h->idx) != CUVS_SUCCESS) {
     fprintf(stderr, "[seekdb_cuvs] CagraBuild failed: %s\n", sk_err());
     goto fail;
   }
 
   memset(&view, 0, sizeof(view));
-  if (cuvsCagraIndexGetDataset(h->idx, &view) == CUVS_SUCCESS) {
+  keep_dev = 0; /* cuVS owns its own device copy of the host dataset */
+  if (0 && cuvsCagraIndexGetDataset(h->idx, &view) == CUVS_SUCCESS) {
     const uintptr_t d0 = (uintptr_t)dev;
     const uintptr_t d1 = d0 + bytes;
     const uintptr_t got = (uintptr_t)view.dl_tensor.data;
@@ -559,7 +571,7 @@ static void* sk_build_inner(const float* base, long n, long dim)
 
 fail:
   if (registered) { (void)cudaHostUnregister((void*)base); }
-  if (dev != NULL && h->res != 0) { (void)cuvsRMMFree(h->res, dev, bytes); }
+  /* dev is unused with the host-tensor build path */
   if (h->idx != NULL) { (void)cuvsCagraIndexDestroy(h->idx); }
   if (h->dev_dataset != NULL && h->res != 0) {
     (void)cuvsRMMFree(h->res, h->dev_dataset, h->dev_dataset_bytes);
