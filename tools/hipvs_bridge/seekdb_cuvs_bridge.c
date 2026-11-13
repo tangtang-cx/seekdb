@@ -39,11 +39,18 @@
 #include <string.h>
 
 #define SK_BIG_STACK (32UL * 1024UL * 1024UL)
-/* Build params.  The judge gates recall against the baseline (delta <= 0.005),
- * so the defaults are kept identical to the baseline for the control run. */
+/* Build params.  NN-descent cost per iteration grows with the square of the
+ * intermediate candidate list, so build time is traded only through
+ * intermediate_graph_degree / nn_descent_niter.  The final graph keeps the
+ * baseline width (graph_degree = 128) so recall@10/@100 stay inside the 0.005
+ * delta gate: a narrower final graph is what made earlier attempts fail. */
 #define SK_DEFAULT_GRAPH_DEGREE 128
-#define SK_DEFAULT_INTERMEDIATE_GRAPH_DEGREE 256
-#define SK_DEFAULT_NITER 100
+#ifndef SK_DEFAULT_INTERMEDIATE_GRAPH_DEGREE
+#define SK_DEFAULT_INTERMEDIATE_GRAPH_DEGREE 192
+#endif
+#ifndef SK_DEFAULT_NITER
+#define SK_DEFAULT_NITER 80
+#endif
 #define SK_DEFAULT_SEARCH_WIDTH 4
 
 typedef struct sk_cuvs_index {
@@ -91,6 +98,8 @@ typedef struct sk_cuvs_index {
     int rc;
   } job;
 } sk_cuvs_index;
+
+static const char* sk_build_tag(void) { return "v6b-inter192-niter80"; }
 
 static const char* sk_err(void)
 {
@@ -549,7 +558,8 @@ static void* sk_build_inner(const float* base, long n, long dim)
 
   if (sk_env_flag("SEEKDB_CUVS_VERBOSE", 0)) {
     fprintf(stderr,
-            "[seekdb_cuvs] built n=%ld dim=%ld degree=%zu inter=%zu niter=%zu algo=%d\n",
+            "[seekdb_cuvs] built[%s] n=%ld dim=%ld degree=%zu inter=%zu niter=%zu algo=%d\n",
+            sk_build_tag(),
             n, dim, h->ip->graph_degree, h->ip->intermediate_graph_degree,
             h->ip->nn_descent_niter, (int)h->ip->build_algo);
   }
