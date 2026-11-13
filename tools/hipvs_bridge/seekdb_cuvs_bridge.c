@@ -20,7 +20,7 @@
  * Environment knobs (all optional):
  *   SEEKDB_CUVS_GRAPH_DEGREE, SEEKDB_CUVS_INTERMEDIATE_GRAPH_DEGREE,
  *   SEEKDB_CUVS_NITER, SEEKDB_CUVS_SEARCH_WIDTH, SEEKDB_CUVS_BUILD_ALGO,
- *   SEEKDB_CUVS_PIN_BUILD_INPUT=0, SEEKDB_CUVS_VERBOSE=1
+ *   SEEKDB_CUVS_VERBOSE=1
  */
 #define _GNU_SOURCE
 #include "seekdb_cuvs_bridge.h"
@@ -66,10 +66,14 @@
  * graph, and a sparser candidate graph actually converges *better* at a fixed
  * iteration count, which is what protects the recall gate here. */
 #define SK_HIGH_DIM_INTERMEDIATE_DEGREE 128
-#define SK_HIGH_DIM_NITER 36
+#define SK_HIGH_DIM_NITER 32
 #define SK_DEFAULT_SEARCH_WIDTH 4
 #define SK_ITOPK_FACTOR 4
-#define SK_ITOPK_FLOOR 512
+/* Twice the baseline candidate pool: the cheaper 32-round graph gives up a
+ * little graph quality, and a wider beam buys that recall back at a few percent
+ * of extra query latency, which keeps the recall gate safe without spending the
+ * whole query-side margin. */
+#define SK_ITOPK_FLOOR 1024
 
 typedef struct sk_cuvs_index {
   cuvsResources_t res;
@@ -166,6 +170,16 @@ static void sk_tensor(DLManagedTensor* t, void* data, int64_t* shape,
   t->dl_tensor.shape = shape;
   t->dl_tensor.strides = NULL;
   t->dl_tensor.byte_offset = 0;
+}
+
+/* Same layout, but the buffer lives in ordinary host memory: cuVS then performs
+   the transfer to the device itself (through pinned staging), which keeps the
+   build window free of an explicit, synchronous dataset memcpy. */
+static void sk_tensor_host(DLManagedTensor* t, void* data, int64_t* shape,
+                           DLDataTypeCode code, int bits)
+{
+  sk_tensor(t, data, shape, code, bits);
+  t->dl_tensor.device.device_type = kDLCPU;
 }
 
 static int sk_ensure_dev(sk_cuvs_index* h, void** ptr, size_t* cap, size_t need)
@@ -459,15 +473,11 @@ inline_call:
 static void* sk_build_inner(const float* base, long n, long dim)
 {
   sk_cuvs_index* h = NULL;
-  void* dev = NULL;
   size_t bytes = 0;
-  int registered = 0;
   long degree, inter, niter;
   const char* algo;
   int64_t shape[2];
   DLManagedTensor dset;
-  DLManagedTensor view;
-  int keep_dev = 0;
 
   if (base == NULL || n <= 0 || dim <= 0) { return NULL; }
   if (sk_mul_size((size_t)n, (size_t)dim, sizeof(float), &bytes) != 0) { return NULL; }
@@ -523,58 +533,24 @@ static void* sk_build_inner(const float* base, long n, long dim)
     goto fail;
   }
 
-  if (cuvsRMMAlloc(h->res, &dev, bytes) != CUVS_SUCCESS) {
-    fprintf(stderr, "[seekdb_cuvs] device dataset alloc failed (%zu bytes): %s\n", bytes, sk_err());
-    goto fail;
-  }
-  if (sk_env_flag("SEEKDB_CUVS_PIN_BUILD_INPUT", 0)) {
-    if (cudaHostRegister((void*)base, bytes, cudaHostRegisterDefault) == cudaSuccess) {
-      registered = 1;
-    } else {
-      (void)cudaGetLastError();
-    }
-  }
-  if (cudaMemcpy(dev, base, bytes, cudaMemcpyHostToDevice) != cudaSuccess) {
-    fprintf(stderr, "[seekdb_cuvs] dataset H2D failed: %s\n", sk_err());
-    (void)cudaGetLastError();
-    goto fail;
-  }
-  if (registered) {
-    (void)cudaHostUnregister((void*)base);
-    registered = 0;
-  }
-
+  /* cuVS copies the dataset to the device itself and stages that copy through
+   * pinned memory.  Doing the H2D transfer here instead costs a full
+   * synchronous memcpy of n * dim * 4 bytes inside the timed build window
+   * (hundreds of megabytes for the 250K datasets), so the host tensor is handed
+   * straight to CAGRA and no device dataset is owned by this handle. */
   shape[0] = n;
   shape[1] = dim;
-  sk_tensor(&dset, dev, shape, kDLFloat, 32);
+  sk_tensor_host(&dset, (void*)base, shape, kDLFloat, 32);
   if (cuvsCagraBuild(h->res, h->ip, &dset, h->idx) != CUVS_SUCCESS) {
     fprintf(stderr, "[seekdb_cuvs] CagraBuild failed: %s\n", sk_err());
     goto fail;
   }
 
-  memset(&view, 0, sizeof(view));
-  if (cuvsCagraIndexGetDataset(h->idx, &view) == CUVS_SUCCESS) {
-    const uintptr_t d0 = (uintptr_t)dev;
-    const uintptr_t d1 = d0 + bytes;
-    const uintptr_t got = (uintptr_t)view.dl_tensor.data;
-    if (got >= d0 && got < d1) { keep_dev = 1; }
-    if (view.deleter != NULL) {
-      view.deleter(&view);
-    }
-  } else {
-    /* Conservatively keep the buffer alive if ownership cannot be determined. */
-    keep_dev = 1;
-    (void)cudaGetLastError();
-  }
-
   h->n = n;
   h->dim = dim;
-  if (keep_dev) {
-    h->dev_dataset = dev;
-    h->dev_dataset_bytes = bytes;
-    h->owns_dev_dataset = 1;
-    dev = NULL;
-  }
+  h->dev_dataset = NULL;
+  h->dev_dataset_bytes = 0;
+  h->owns_dev_dataset = 0;
 
   if (sk_handle_init(h) != 0) {
     fprintf(stderr, "[seekdb_cuvs] handle init failed\n");
@@ -591,8 +567,6 @@ static void* sk_build_inner(const float* base, long n, long dim)
   return h;
 
 fail:
-  if (registered) { (void)cudaHostUnregister((void*)base); }
-  if (dev != NULL && h->res != 0) { (void)cuvsRMMFree(h->res, dev, bytes); }
   if (h->idx != NULL) { (void)cuvsCagraIndexDestroy(h->idx); }
   if (h->dev_dataset != NULL && h->res != 0) {
     (void)cuvsRMMFree(h->res, h->dev_dataset, h->dev_dataset_bytes);
