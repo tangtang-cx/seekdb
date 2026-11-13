@@ -161,7 +161,9 @@ def parse_test(path, variables, source_stack=None):
 
         if not pending:
             pending_start = line_no
-        pending.append(raw)
+        # mysqltest echoes a multi line statement without the leading blanks of
+        # its continuation lines, the reference transcripts are written that way.
+        pending.append(stripped)
         joined = "\n".join(pending)
         if not joined.rstrip().endswith(";"):
             continue
