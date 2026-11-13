@@ -48,7 +48,20 @@ def load_kb_documents(kb_dir: Path = KB_DIR) -> list[dict[str, str]]:
         if heading:
             title = heading.group(1).strip()
         docs.append({"title": title, "text": text, "source": path.name})
-    return docs
+    if docs:
+        return docs
+    # No kb/ folder: fall back to the rule knowledge generated from reviewer.RULES,
+    # so the knowledge stored in seekdb is always the same set the engine uses.
+    from knowledge import build_documents  # noqa: PLC0415
+
+    return [
+        {
+            "title": item["metadata"]["title"],
+            "text": item["text"],
+            "source": item["metadata"]["source"],
+        }
+        for item in build_documents()
+    ]
 
 
 def ingest(store: SeekdbStore, embedder: Embedder, docs: list[dict[str, str]]) -> int:
@@ -68,7 +81,7 @@ def ingest(store: SeekdbStore, embedder: Embedder, docs: list[dict[str, str]]) -
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "dify-seekdb/1.0"
+    server_version = "qoder-seekdb/1.0"
 
     def _json(self, payload: dict, status: int = 200) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")

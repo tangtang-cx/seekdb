@@ -25,6 +25,10 @@ https://sql-review-assistant-8ptbxy0nhc9.qoder.zone/
 Qoder/
   app.py                    # Streamlit 主程序（模型配置 + SQL 输入 + 三级结果 + 报告导出）
   reviewer.py               # 15 条确定性静态规则 + OpenAI 兼容 LLM 客户端（仅标准库）
+  run.py                    # 零依赖入口：默认跑主流程自检（SELFCHECK PASS，退出码 0）
+  verify.py                 # 四项验收：规则引擎 / 自检 / /health / POST /api/review
+  EVIDENCE_ROOT.json        # 真·seekdb 内核跑出来的证据（DDL / 写入 / 检索计划 / 命中片段）
+  seekdb_service/           # 真·seekdb 存取层 + 规则知识库 + 审查接入层 + 证据生成脚本
   rules/sql_review_rules.md # 规则说明，编号与实现一一对应
   tests/test_rules.py       # 22 个规则用例
   tests/test_app_smoke.py   # 1 个 Streamlit AppTest 冒烟用例
@@ -39,6 +43,22 @@ Qoder/
 python run.py            # 主功能自检：打印 SELFCHECK PASS，退出码 0，零第三方依赖
 python run.py --serve    # 想交互体验：-> http://127.0.0.1:8501（/health、POST /api/review）
 ```
+
+## seekdb 实际怎么参与审查（可复现）
+
+规则知识存在**真实 seekdb 内核**的 `qoder_rule_knowledge` 表（`VECTOR(512)` + IK 全文索引
++ HNSW 向量索引），审查时由内核生成混合检索计划（全文分支 + 向量分支，RRF 在内核内融合），
+取回的依据作为每条问题的 `basis` 返回；每轮审查写回 `qoder_review_log`。
+
+```bash
+pip install -r requirements-seekdb.txt      # pylibseekdb + 向量依赖
+python seekdb_service/fetch_model.py        # bge-small-zh INT8 权重（约 23 MiB）
+python run.py                               # 追加输出：[seekdb] PASS 规则知识 15 条入库；混合检索命中 N 条；审查历史 M 行写入
+python seekdb_service/capture_evidence.py   # 重新生成 EVIDENCE_ROOT.json（真内核证据）
+```
+
+没装 `pylibseekdb` 也能跑：`run.py` 依旧 `SELFCHECK PASS`（输出 `[seekdb] SKIP`），
+`/api/review` 里会写明降级原因 —— 判定依据与主功能不依赖内核是否到位。
 
 以下为可选的完整 Streamlit 界面（需要联网装 streamlit，非主流程）：
 

@@ -1,0 +1,154 @@
+{
+  "engine": "seekdb",
+  "mode": "embedded",
+  "embedding": {
+    "model": "bge-small-zh-v1.5 (INT8 ONNX)",
+    "dim": 512,
+    "fallback": false
+  },
+  "ddl": {
+    "rule_knowledge": "CREATE TABLE IF NOT EXISTS `qoder_rule_knowledge` ( id VARBINARY(512) PRIMARY KEY NOT NULL, document STRING, embedding VECTOR(512), metadata JSON, FULLTEXT INDEX idx_fts (document) WITH PARSER ik PARSER_PROPERTIES=(ik_mode='smart'), VECTOR INDEX idx_vec (embedding) WITH(distance=cosine, type=hnsw, lib=vsag, m=16, ef_construction=200, ef_search=64) ) ORGANIZATION = HEAP",
+    "review_log": "CREATE TABLE IF NOT EXISTS `qoder_review_log` ( id VARBINARY(512) PRIMARY KEY NOT NULL, created_at TIMESTAMP(6), engine STRING, finding_count INT, severity STRING, sql_text STRING, summary STRING, details JSON, FULLTEXT INDEX idx_review_sql (sql_text) WITH PARSER ik PARSER_PROPERTIES=(ik_mode='smart') ) ORGANIZATION = HEAP"
+  },
+  "writes": {
+    "rule_knowledge_chunks": 15,
+    "rows_in_table": 15,
+    "seconds": 34.8,
+    "review_log_rows": 1,
+    "review_log_id": "fd56cc3947e32a3c2d2c",
+    "reviewed_sql": "SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id\nWHERE DATE(o.created_at) = '2026-01-01'\n  AND c.city LIKE '%杭州%'\nORDER BY o.created_at DESC\nLIMIT 20, 200000;",
+    "review_findings": [
+      {
+        "id": "OB-004",
+        "level": "warn",
+        "title": "SELECT * 列出全部列"
+      },
+      {
+        "id": "OB-005",
+        "level": "warn",
+        "title": "LIKE 前置通配符"
+      },
+      {
+        "id": "OB-006",
+        "level": "warn",
+        "title": "索引列被函数包裹"
+      },
+      {
+        "id": "OB-007",
+        "level": "warn",
+        "title": "深分页 OFFSET"
+      },
+      {
+        "id": "OB-013",
+        "level": "info",
+        "title": "缺少执行计划验证"
+      }
+    ]
+  },
+  "retrievals": [
+    {
+      "query": "深分页 OFFSET 太大怎么办？",
+      "plan_has_fulltext_branch": true,
+      "plan_has_vector_branch": true,
+      "plan_head": "SELECT ifnull(`_fts`.`id`, `_vs`.`id`) as `id`, ifnull(`_fts`.`document`, `_vs`.`document`) as `document`, ifnull(`_fts`.`embedding`, `_vs`.`embedding`) as `embedding`, ifnull(`_fts`.`metadata`, `_vs`.`metadata`) as `met",
+      "hits": [
+        {
+          "title": "OB-007 深分页 OFFSET",
+          "source": "rules/sql_review_rules.md",
+          "score": 0.016393,
+          "snippet": "规则 OB-007｜深分页 OFFSET\n级别：警告\n判定说明：大 OFFSET 会让数据库扫描并丢弃前面的大量行。\n修复建议：改成游标分页（WHERE id > last_id ORDER BY id LIMIT n）。\n触发关键词：（不"
+        },
+        {
+          "title": "OB-009 IN 列表过长",
+          "source": "rules/sql_review_rules.md",
+          "score": 0.016393,
+          "snippet": "规则 OB-009｜IN 列表过长\n级别：警告\n判定说明：IN 列表过长会拖慢解析并撑大执行计划。\n修复建议：改用 JOIN 临时表，或分批提交。\n触发关键词：（不限关键词，全量匹配）\n典型反例：SELECT id FROM orders "
+        },
+        {
+          "title": "OB-011 UNION 去重开销",
+          "source": "rules/sql_review_rules.md",
+          "score": 0.016129,
+          "snippet": "规则 OB-011｜UNION 去重开销\n级别：提示\n判定说明：UNION 需要去重（排序或哈希），比 UNION ALL 慢。\n修复建议：确认不需要去重时改成 UNION ALL。\n触发关键词：（不限关键词，全量匹配）\n典型反例：SELE"
+        }
+      ]
+    },
+    {
+      "query": "WHERE 里的列被函数包裹会导致索引失效吗？",
+      "plan_has_fulltext_branch": true,
+      "plan_has_vector_branch": true,
+      "plan_head": "SELECT ifnull(`_fts`.`id`, `_vs`.`id`) as `id`, ifnull(`_fts`.`document`, `_vs`.`document`) as `document`, ifnull(`_fts`.`embedding`, `_vs`.`embedding`) as `embedding`, ifnull(`_fts`.`metadata`, `_vs`.`metadata`) as `met",
+      "hits": [
+        {
+          "title": "OB-006 索引列被函数包裹",
+          "source": "rules/sql_review_rules.md",
+          "score": 0.016393,
+          "snippet": "规则 OB-006｜索引列被函数包裹\n级别：警告\n判定说明：在 WHERE 里对列使用函数会让普通索引失效。\n修复建议：改成范围条件（>= / <），或建函数索引 / 生成列索引。\n触发关键词：（不限关键词，全量匹配）\n典型反例：SELEC"
+        },
+        {
+          "title": "OB-005 LIKE 前置通配符",
+          "source": "rules/sql_review_rules.md",
+          "score": 0.016393,
+          "snippet": "规则 OB-005｜LIKE 前置通配符\n级别：警告\n判定说明：LIKE '%xxx' 无法使用索引，只能全表扫描。\n修复建议：改成前缀匹配 LIKE 'xxx%'，或改用全文索引 / 倒排索引。\n触发关键词：（不限关键词，全量匹配）\n典型"
+        },
+        {
+          "title": "OB-014 疑似隐式类型转换",
+          "source": "rules/sql_review_rules.md",
+          "score": 0.016129,
+          "snippet": "规则 OB-014｜疑似隐式类型转换\n级别：提示\n判定说明：数值列与字符串字面量比较会触发隐式类型转换，导致索引失效。\n修复建议：让字面量类型与列类型一致：数值列直接写数字（id = 123），不要加引号。\n触发关键词：where\n典型反例"
+        }
+      ]
+    },
+    {
+      "query": "SELECT * 有什么问题，应该怎么改写？",
+      "plan_has_fulltext_branch": true,
+      "plan_has_vector_branch": true,
+      "plan_head": "SELECT ifnull(`_fts`.`id`, `_vs`.`id`) as `id`, ifnull(`_fts`.`document`, `_vs`.`document`) as `document`, ifnull(`_fts`.`embedding`, `_vs`.`embedding`) as `embedding`, ifnull(`_fts`.`metadata`, `_vs`.`metadata`) as `met",
+      "hits": [
+        {
+          "title": "OB-004 SELECT * 列出全部列",
+          "source": "rules/sql_review_rules.md",
+          "score": 0.016393,
+          "snippet": "规则 OB-004｜SELECT * 列出全部列\n级别：警告\n判定说明：SELECT * 会带来无效 IO、回表与 schema 变更风险。\n修复建议：显式列出需要的列。\n触发关键词：（不限关键词，全量匹配）\n典型反例：SELECT * F"
+        },
+        {
+          "title": "OB-002 JOIN 缺少关联条件",
+          "source": "rules/sql_review_rules.md",
+          "score": 0.016393,
+          "snippet": "规则 OB-002｜JOIN 缺少关联条件\n级别：阻断\n判定说明：存在 JOIN 但没有 ON / USING，会产生笛卡尔积。\n修复建议：补上 ON 关联条件，并确认两侧字段类型一致。\n触发关键词：join\n典型反例：SELECT o.i"
+        },
+        {
+          "title": "OB-010 SELECT ... FOR UPDATE 无 WHERE",
+          "source": "rules/sql_review_rules.md",
+          "score": 0.016129,
+          "snippet": "规则 OB-010｜SELECT ... FOR UPDATE 无 WHERE\n级别：警告\n判定说明：没有 WHERE 的 FOR UPDATE 会锁住整表。\n修复建议：补 WHERE 条件缩小锁范围，并保证事务足够短。\n触发关键词：（不限"
+        }
+      ]
+    },
+    {
+      "query": "NOT IN 和 NULL 组合会漏掉哪些行？",
+      "plan_has_fulltext_branch": true,
+      "plan_has_vector_branch": true,
+      "plan_head": "SELECT ifnull(`_fts`.`id`, `_vs`.`id`) as `id`, ifnull(`_fts`.`document`, `_vs`.`document`) as `document`, ifnull(`_fts`.`embedding`, `_vs`.`embedding`) as `embedding`, ifnull(`_fts`.`metadata`, `_vs`.`metadata`) as `met",
+      "hits": [
+        {
+          "title": "OB-008 NOT IN / != 与 NULL 组合",
+          "source": "rules/sql_review_rules.md",
+          "score": 0.016393,
+          "snippet": "规则 OB-008｜NOT IN / != 与 NULL 组合\n级别：警告\n判定说明：NOT IN 子查询或 != 比较一旦遇到 NULL，结果集会被意外放大或清空。\n修复建议：改用 NOT EXISTS，并把列定义为 NOT NULL。\n"
+        },
+        {
+          "title": "OB-010 SELECT ... FOR UPDATE 无 WHERE",
+          "source": "rules/sql_review_rules.md",
+          "score": 0.016393,
+          "snippet": "规则 OB-010｜SELECT ... FOR UPDATE 无 WHERE\n级别：警告\n判定说明：没有 WHERE 的 FOR UPDATE 会锁住整表。\n修复建议：补 WHERE 条件缩小锁范围，并保证事务足够短。\n触发关键词：（不限"
+        },
+        {
+          "title": "OB-009 IN 列表过长",
+          "source": "rules/sql_review_rules.md",
+          "score": 0.016129,
+          "snippet": "规则 OB-009｜IN 列表过长\n级别：警告\n判定说明：IN 列表过长会拖慢解析并撑大执行计划。\n修复建议：改用 JOIN 临时表，或分批提交。\n触发关键词：（不限关键词，全量匹配）\n典型反例：SELECT id FROM orders "
+        }
+      ]
+    }
+  ]
+}

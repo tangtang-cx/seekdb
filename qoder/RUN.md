@@ -23,10 +23,16 @@ python run.py
 [selfcheck]        命中: OB-001
 [selfcheck] PASS  C 规则总数
 SELFCHECK PASS (4/4 用例, 15 条规则)
+[seekdb] SKIP  pylibseekdb 未安装 -> 跳过（主流程零依赖降级可用）
 ```
 
 退出码 `0` 表示主流程（15 条规则引擎）实测通过；任一用例不符则打印 `SELFCHECK FAIL` 并返回非 0。
 自检跑的就是主流程本身，不是另写一套假数据。
+
+最后一行是 seekdb 集成自检：装了 `pylibseekdb` 时会真实跑一遍「建表 → 入库 → 检索 → 回写」，
+输出 `[seekdb] PASS 规则知识 15 条入库；混合检索命中 N 条；审查历史 M 行写入`；
+没装则 `SKIP`。**seekdb 自检无论成败都不影响主流程判定**，它跑在带硬超时的子进程里，
+内核异常也不会把主自检拖挂。
 
 ## 1. 交互体验（常驻服务）
 
@@ -39,9 +45,9 @@ bash start.sh                  # 等价：自动找 python3/python 后同上
 | 端点 | 说明 |
 | --- | --- |
 | `GET /` | 交互式审查界面（粘 SQL → 点「开始审查」→ 三级结果，与 Qoder Sites 页面同一套规则） |
-| `GET /health` | `{"ok": true, "rules_loaded": 15, ...}` |
+| `GET /health` | `{"ok": true, "rules_loaded": 15, "seekdb": {...}}` |
 | `GET /api/rules` | 15 条规则的 id / 级别 / 标题 |
-| `POST /api/review` | `{"sql": "..."}` → findings + summary（同一规则引擎的 JSON 输出） |
+| `POST /api/review` | `{"sql": "..."}` → findings + summary；装了内核时另带 `basis`（seekdb 检索到的判定依据）、`seekdb` 状态与 `review_id`（本轮写入 seekdb 的记录 id） |
 
 ```bash
 curl -s localhost:8501/health
@@ -49,8 +55,8 @@ curl -s -X POST localhost:8501/api/review -H "Content-Type: application/json" \
   -d "{\"sql\": \"UPDATE orders SET status = 'ARCHIVED';\"}"
 ```
 
-**首屏 1–2 秒内可用**：seekdb 知识服务在后台异步拉起；拉不起来也不影响主要功能
-（规则引擎照常工作，只是没有「医书依据」与历史落库）。
+**首屏 1–2 秒内可用**：内核缺失时规则引擎照常工作（响应里会写明降级原因），
+装了 `pylibseekdb` 时首次审查会拉起内嵌内核并做检索与回写。
 
 ## 2. 环境
 
@@ -76,13 +82,23 @@ streamlit run app.py                    # 没装 streamlit 时 `python app.py` �
 ```bash
 pip install -r requirements-seekdb.txt  # pylibseekdb / onnxruntime / tokenizers / numpy，全部宽松区间
 python seekdb_service/fetch_model.py    # 取一次 bge-small-zh-v1.5 INT8 权重（约 23 MiB）
-streamlit run app.py                    # 后台自动拉起 seekdb 知识服务（8848）
+python run.py                           # 追加输出：[seekdb] PASS 规则知识 15 条入库；混合检索命中 N 条；审查历史 M 行写入
 ```
 
-此时每次审查都会：
-1. 用 seekdb 做**向量 + 全文 + RRF** 混合检索（融合在 seekdb 内核内完成）取回「医书」依据；
-2. 把本轮审查结果**写回 seekdb** 的 `qoder_review_log` 表；
-3. 界面上的「seekdb 里的审查历史」是实时从 seekdb 查出来的。
+装了内核之后，每次审查都会（**内嵌内核直连，不需要另起 8848 服务**）：
+
+1. 规则知识已存在真实表 `qoder_rule_knowledge`（`VECTOR(512)` + IK 全文索引 + HNSW 向量索引）；
+2. 用 seekdb 内核做**向量 + 全文 + RRF** 混合检索，取回该条问题的判定依据，挂在 finding 的 `basis` 上；
+3. 把本轮审查结果**写回 seekdb** 的 `qoder_review_log` 表，返回 `review_id`。
+
+核对证据（真内核跑出来的文件，可一键重跑）：
+
+```bash
+python seekdb_service/capture_evidence.py   # -> EVIDENCE_ROOT.json
+```
+
+里面记着建表 DDL、写入行数、每次检索的计划是否同时含**全文分支**与**向量分支**、
+命中的原文片段，以及审查历史写入的记录 id。
 
 ### C. Docker
 
@@ -103,7 +119,8 @@ python smoke_test.py                 # PASS：启动 + 探活
 
 | 变量 | 用途 | 默认 |
 | --- | --- | --- |
-| `SEEKDB_SERVICE_URL` | 知识服务地址 | `http://127.0.0.1:8848` |
+| `SEEKDB_PATH` | 内嵌 seekdb 数据目录 | `seekdb_service/.data/qoder-seekdb` |
+| `SEEKDB_SERVICE_URL` | 知识服务地址（Streamlit 界面用） | `http://127.0.0.1:8848` |
 | `MODELSCOPE_API_KEY` / `MINIMAX_API_KEY` / `STEPFUN_API_KEY` | 可选推理服务（OpenAI 兼容） | 空 |
 | `MODELSCOPE_BASE_URL` / `MODELSCOPE_MODEL` | 推理地址与模型 | `https://api-inference.modelscope.cn/v1` / `Qwen/Qwen3.5-27B` |
 | `SERVE` | 置为 `1` 等价于 `--serve` | 空 |

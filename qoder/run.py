@@ -43,6 +43,49 @@ def _load_engine():
     return analyze, summarize
 
 
+def _seekdb_available() -> bool:
+    """True when the real seekdb kernel (pylibseekdb) is importable."""
+    import importlib.util  # noqa: PLC0415
+
+    try:
+        return importlib.util.find_spec("pylibseekdb") is not None
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _seekdb_status() -> dict:
+    """Lightweight status for /health -- never starts a kernel."""
+    return {
+        "available": _seekdb_available(),
+        "engine": "seekdb",
+        "mode": "embedded",
+        "note": "pylibseekdb 未安装时降级为纯规则引擎" if not _seekdb_available() else "",
+    }
+
+
+def _seekdb_review(sql: str, findings: list[dict]) -> dict:
+    """Enrich the findings with the seekdb-retrieved basis and store the round.
+
+    Degrades to the plain rule engine when the kernel is not installed; the
+    reason is reported instead of being hidden.
+    """
+    try:
+        sys.path.insert(0, str(HERE / "seekdb_service"))
+        from qoder_review import review_with_seekdb  # noqa: PLC0415
+
+        return review_with_seekdb(sql, findings)
+    except Exception as error:  # noqa: BLE001
+        return {
+            "findings": findings,
+            "seekdb": {
+                "available": False,
+                "engine": "seekdb",
+                "reason": f"{type(error).__name__}: {error}",
+            },
+            "review_id": None,
+        }
+
+
 class Handler(SimpleHTTPRequestHandler):
     server_version = "QoderReview/1.0"
 
@@ -76,6 +119,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "app": "qoder-review-assistant",
                     "rules_loaded": len(RULES),
                     "probe_findings_on_sample_sql": probe_findings,
+                    "seekdb": _seekdb_status(),
                 })
             except Exception as error:  # noqa: BLE001
                 self._json({"ok": False, "error": f"{type(error).__name__}: {error}"}, 500)
@@ -115,8 +159,18 @@ class Handler(SimpleHTTPRequestHandler):
             return
         try:
             analyze, summarize = _load_engine()
-            findings = [f.to_dict() for f in analyze(sql)]
-            self._json({"ok": True, "sql": sql, "summary": summarize(analyze(sql)), "findings": findings})
+            finding_objects = analyze(sql)
+            findings = [f.to_dict() for f in finding_objects]
+            summary = summarize(finding_objects)
+            result = _seekdb_review(sql, findings)
+            self._json({
+                "ok": True,
+                "sql": sql,
+                "summary": summary,
+                "findings": result["findings"],
+                "seekdb": result["seekdb"],
+                "review_id": result.get("review_id"),
+            })
         except Exception as error:  # noqa: BLE001
             self._json({"ok": False, "error": f"{type(error).__name__}: {error}"}, 500)
 
@@ -125,6 +179,44 @@ EXAMPLE_SQL = """SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id
 WHERE DATE(o.created_at) = '2026-01-01'
 AND c.city LIKE '%杭州%'
 LIMIT 20, 200000;"""
+
+
+def _seekdb_selfcheck() -> tuple[bool | None, str]:
+    """Verify the real seekdb integration in a child process (hard timeout).
+
+    Returns ``(ok, detail)``; ``ok is None`` means "skipped" (the wheel is not
+    installed). The result never fails the main self-check: the deterministic
+    rule engine is the main function, seekdb is the storage/retrieval layer on
+    top of it and must not be able to break the run.
+    """
+    if not _seekdb_available():
+        return None, "pylibseekdb 未安装 -> 跳过（主流程零依赖降级可用）"
+    import subprocess  # noqa: PLC0415
+
+    script = HERE / "seekdb_service" / "seekdb_selfcheck.py"
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(script)],
+            capture_output=True,
+            text=True,
+            timeout=180,
+            cwd=str(HERE),
+        )
+    except subprocess.TimeoutExpired:
+        return False, "seekdb 自检子进程超时（180s），已跳过"
+    except Exception as error:  # noqa: BLE001
+        return False, f"{type(error).__name__}: {error}"
+
+    line = (proc.stdout or "").strip().splitlines()
+    if not line:
+        return False, f"seekdb 自检无输出（rc={proc.returncode}）"
+    try:
+        payload = json.loads(line[-1])
+    except Exception:  # noqa: BLE001
+        return False, f"seekdb 自检输出无法解析: {line[-1][:120]}"
+    if payload.get("ok"):
+        return True, str(payload.get("detail", ""))
+    return False, str(payload.get("reason") or payload.get("detail") or "seekdb 自检未通过")
 
 
 def _selfcheck() -> int:
@@ -183,6 +275,13 @@ def _selfcheck() -> int:
 
     if passed == len(cases):
         print(f"SELFCHECK PASS ({passed}/{len(cases)} 用例, {len(RULES)} 条规则)", flush=True)
+        seekdb_ok, seekdb_detail = _seekdb_selfcheck()
+        if seekdb_ok is None:
+            print(f"[seekdb] SKIP  {seekdb_detail}", flush=True)
+        elif seekdb_ok:
+            print(f"[seekdb] PASS  {seekdb_detail}", flush=True)
+        else:
+            print(f"[seekdb] FAIL  {seekdb_detail}（不影响主流程判定）", flush=True)
         return 0
     print(f"SELFCHECK FAIL ({passed}/{len(cases)} 用例通过)", flush=True)
     return 1

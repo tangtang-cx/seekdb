@@ -26,7 +26,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-TABLE = "dify_knowledge_base"
+TABLE = "qoder_rule_knowledge"
 REVIEW_TABLE = "qoder_review_log"
 EMBEDDING_DIM = 512
 
@@ -67,7 +67,7 @@ class SeekdbStore:
 
     def __init__(self, db_dir: str | Path | None = None) -> None:
         self.mode = "embedded"
-        self.db_dir = Path(db_dir or os.environ.get("SEEKDB_PATH", "./.data/dify-seekdb"))
+        self.db_dir = Path(db_dir or os.environ.get("SEEKDB_PATH", "./.data/qoder-seekdb"))
         self._instance = None
         self._connection = None
         self._cursor = None

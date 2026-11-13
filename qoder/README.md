@@ -97,10 +97,15 @@ docker compose --profile seekdb up -d   # 额外起 seekdb + 知识服务
 | 组件 | 作用 | 在流程里的实际体现（可核对） |
 | --- | --- | --- |
 | **Qoder** | 承担项目主要开发工作 | 界面与主体代码由 Qoder 生成（提示词见 `PROMPT.md`），增强点见 `PROMPT.md` §3 |
-| **seekdb** | 数据存储、查询与检索 | ① 审查前用 **seekdb 混合检索**（本地 bge 向量 + IK 全文 + **RRF 融合在 seekdb 内核内**）取回相关「医书」条目作为审查依据，界面里可展开核对原文；② 每轮审查结果**写回 seekdb**（表 `qoder_review_log`），侧栏「🗂️ 审查历史」实时从 seekdb 查回 |
+| **seekdb** | 数据存储、查询与检索 | ① 规则知识入库到真实表 `qoder_rule_knowledge`（`VECTOR(512)` + IK 全文索引 + HNSW 向量索引），审查时用 **seekdb 混合检索**（全文分支 + 向量分支，**RRF 融合在 seekdb 内核内**）取回该条问题的判定依据，作为 finding 的 `basis` 返回；② 每轮审查结果**写回 seekdb**（表 `qoder_review_log`），可查回记录 id 与累计条数 |
 
-**不是「只装组件、只测连接」**：每次点「开始审查」都会真实走一遍
-「seekdb 检索 → 模型（可选）作答 → 写回 seekdb」，并在界面上显示命中条数、写入的记录 id 与累计条数。
+**不是「只装组件、只测连接」**：seekdb 走的是**内嵌真实内核**（`pylibseekdb.open()`，
+无外部服务依赖），每轮审查实际执行「seekdb 检索 → 规则判定 → 写回 seekdb」，
+并在 `/api/review` 的响应里返回 `seekdb` 状态、`review_id` 与每条问题的 `basis`。
+
+真内核跑出来的证据见 **`EVIDENCE_ROOT.json`**（建表 DDL、写入行数、检索计划
+是否同时含全文分支与向量分支、命中的原文片段、审查历史写入记录），
+可用 `python seekdb_service/capture_evidence.py` 一键复现。
 
 ---
 
@@ -111,6 +116,12 @@ docker compose --profile seekdb up -d   # 额外起 seekdb + 知识服务
 | `app.py` | Streamlit 主程序（模型配置 + SQL 输入 + 三级结果 + 报告导出 + seekdb 接入） |
 | `reviewer.py` | 15 条确定性静态规则 + OpenAI 兼容 LLM 客户端（仅标准库） |
 | `seekdb_bridge.py` | seekdb 桥接层（检索 / 写回 / 查历史，服务不可用时优雅降级） |
+| `seekdb_service/seekdb_store.py` | **真·seekdb 存取层**：`qoder_rule_knowledge`（VECTOR(512) + IK 全文 + HNSW）与 `qoder_review_log` 两张表的 DDL、写入、混合检索、RRF 融合 |
+| `seekdb_service/knowledge.py` | 规则知识库：**由 `reviewer.RULES` 自动生成**，知识与引擎同源、不会漂移 |
+| `seekdb_service/qoder_review.py` | 审查接入层：给每条 finding 挂上 seekdb 检索到的依据、把每轮审查写回 seekdb；内核缺失时降级并如实说明原因 |
+| `seekdb_service/capture_evidence.py` | 在真内核上跑一遍「建表 → 入库 → 审查 → 回写 → 混合检索」，产出 `EVIDENCE_ROOT.json` |
+| `seekdb_service/seekdb_selfcheck.py` | seekdb 集成自检（子进程 + 硬超时，内核异常不会拖垮主自检） |
+| `EVIDENCE_ROOT.json` | **真内核运行产出的证据**：DDL、写入行数、检索计划（全文分支 / 向量分支）、命中片段、审查历史记录 |
 | `rules/sql_review_rules.md` | 规则说明，编号与实现一一对应 |
 | `tests/test_rules.py` / `tests/test_app_smoke.py` | 22 + 1 个用例（规则触发/不触发 + Streamlit UI 冒烟） |
 | `PROMPT.md` | Qoder 提示词、生成物与增强点对照表、**Qoder Sites 发布步骤**、开发记录截图清单 |
@@ -155,9 +166,22 @@ python run.py --serve  # 或 bash start.sh   ->  http://127.0.0.1:8501
 
 ```bash
 pip install -r requirements-ui.txt    # Streamlit 界面：streamlit run app.py
-pip install -r requirements-seekdb.txt # 真·seekdb 检索与审查历史落库
+pip install -r requirements-seekdb.txt # 真·seekdb 内核（pylibseekdb）+ 向量依赖
 python seekdb_service/fetch_model.py   # 取一次 bge-small-zh INT8 权重（约 23 MiB）
 ```
+
+**真·seekdb 内核的复现步骤**（装上后同一套命令即可看到 `seekdb` 参与审查）：
+
+```bash
+pip install -r requirements-seekdb.txt
+python seekdb_service/fetch_model.py            # bge-small-zh INT8 权重
+python run.py                                   # -> SELFCHECK PASS ... + [seekdb] PASS 规则知识 15 条入库；混合检索命中 N 条；审查历史 M 行写入
+python seekdb_service/capture_evidence.py       # -> 生成 EVIDENCE_ROOT.json（真内核证据）
+python run.py --serve                          # POST /api/review 会带上 basis 与 review_id
+```
+
+未安装 `pylibseekdb` 时：`run.py` 仍然 `SELFCHECK PASS`（`[seekdb] SKIP`），
+审查功能不受影响；`/api/review` 的响应里会如实写明降级原因。
 
 ### 3.3 Qoder Sites 发布
 
@@ -192,8 +216,8 @@ LIMIT 20, 200000;
 **预期结果**
 
 - 指标：**阻断 0 / 警告 3 / 提示 1**（OB-004 `SELECT *`、OB-005 `LIKE '%…'`、OB-006 索引列被函数包裹、OB-007 深分页、OB-013 缺执行计划）；
-- 展开「📖 seekdb 检索到的依据」：应出现来自 `01-seekdb-向量库速查.md` / `02-混合检索与RRF.md` 的**真实段落**（这证明 seekdb 检索确实生效，不是内置字符串）；
-- 底部提示「本轮审查已写入 seekdb（记录 id …，累计 N 条）」。
+- 每条问题附带 **`basis`**：由 seekdb 混合检索从 `qoder_rule_knowledge` 取回的判定依据与修复示例（同一问题对应同一编号，证明检索生效，不是内置字符串）；
+- `POST /api/review` 的响应含 `seekdb` 状态（规则知识行数 / 审查历史行数 / 嵌入模型）与 `review_id`（本轮审查写入 seekdb 的记录 id）。
 
 ### 样例 B：全表更新（阻断级）
 
@@ -210,11 +234,11 @@ LIMIT 20, 200000;
 ### 样例 D：核对 seekdb 的写入与查询（命令行）
 
 ```bash
-curl http://127.0.0.1:8848/health
-# {"ok":true,"mode":"embedded","chunks":19,"reviews":3,...}
+curl http://127.0.0.1:8501/health
+# {"ok":true,"rules_loaded":15,"seekdb":{"available":true,"engine":"seekdb","mode":"embedded",...}}
 ```
 
-`reviews` 随每次审查递增 —— 这是「指定技术实际发挥作用」的可核对记录。
+审查一轮后再查，`seekdb.review_log_rows` 会 +1 —— 这是「指定技术实际发挥作用」的可核对记录。
 
 ### 样例 E：离线自测
 
@@ -222,6 +246,31 @@ curl http://127.0.0.1:8848/health
 python tests/test_rules.py -v       # 22 passed
 python tests/test_app_smoke.py -v   # 1 passed（Streamlit AppTest 真实点一次审查）
 ```
+
+### 样例 F：核对真内核证据（`EVIDENCE_ROOT.json`）
+
+```bash
+python seekdb_service/capture_evidence.py
+```
+
+预期输出（关键字段）：
+
+```json
+{
+  "engine": "seekdb",
+  "mode": "embedded",
+  "ddl": { "rule_knowledge": "CREATE TABLE ... VECTOR(512) ... FULLTEXT INDEX ... VECTOR INDEX ... type=hnsw",
+           "review_log":   "CREATE TABLE ... `qoder_review_log` ..." },
+  "writes": { "rule_knowledge_chunks": 15, "rows_in_table": 15, "review_log_rows": 1, "review_log_id": "..." },
+  "retrievals": [ { "query": "深分页 OFFSET 太大怎么办？",
+                    "plan_has_fulltext_branch": true,
+                    "plan_has_vector_branch": true,
+                    "hits": [ { "title": "OB-007 深分页 OFFSET", "score": 0.016393, "snippet": "..." } ] } ]
+}
+```
+
+`plan_has_fulltext_branch` 与 `plan_has_vector_branch` 同时为 `true`，说明检索计划
+里**同时存在全文分支与向量分支**——这是 seekdb 真实参与检索的证据，不是字符串匹配。
 
 ---
 
