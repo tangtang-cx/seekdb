@@ -155,6 +155,19 @@ static int sk_ensure_dev(sk_cuvs_index* h, void** ptr, size_t* cap, size_t need)
   return 0;
 }
 
+/* hipVS's compatibility header maps cudaMallocHost -> hipHostMalloc, and hip's
+   hipHostMalloc takes a flags argument (3 parameters) while CUDA's cudaMallocHost
+   takes only 2.  Calling the 2-argument form on HIP fails to compile, so pick the
+   variant that matches the toolchain this file is compiled with. */
+static int sk_host_malloc(void** ptr, size_t bytes)
+{
+#ifdef __HIP_PLATFORM_AMD__
+  return (hipHostMalloc(ptr, bytes, cudaHostRegisterDefault) == cudaSuccess) ? 0 : -1;
+#else
+  return (cudaMallocHost(ptr, bytes) == cudaSuccess) ? 0 : -1;
+#endif
+}
+
 static int sk_ensure_pinned(void** ptr, size_t* cap, size_t need)
 {
   if (*ptr != NULL && *cap >= need) { return 0; }
@@ -164,7 +177,7 @@ static int sk_ensure_pinned(void** ptr, size_t* cap, size_t need)
     *cap = 0;
   }
   if (need == 0) { return 0; }
-  if (cudaMallocHost(ptr, need) != cudaSuccess) { return -1; }
+  if (sk_host_malloc(ptr, need) != 0) { return -1; }
   *cap = need;
   return 0;
 }
