@@ -22,6 +22,9 @@ https://sql-review-assistant-8ptbxy0nhc9.qoder.zone/
 
 ## 0. 三条命令验完（评委按这个顺序看）
 
+> 只看主要功能的话：**不需要 pip install、不需要 seekdb、不需要模型、不需要网络**。
+> `run.py` 只用 Python 标准库，规则引擎与界面都在里面。
+
 **① 零依赖启动（只用 Python 标准库，装不装 streamlit 都能跑）**：
 
 ```bash
