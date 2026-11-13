@@ -106,7 +106,7 @@ with st.sidebar:
     st.header("🔌 seekdb")
     st.caption("医书来自一台真实 seekdb 向量库（向量 + 全文 + RRF，融合在内核内完成）")
     with st.spinner("连接 seekdb…"):
-        health = ensure_service(SERVICE_URL)
+        health = ensure_service(SERVICE_URL, background=True)
     if health.get("ok"):
         st.success(f"seekdb 已就绪 · 模式 {health.get('mode')} · 知识块 {health.get('chunks')}")
     else:

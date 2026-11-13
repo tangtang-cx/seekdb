@@ -42,8 +42,19 @@ def _reachable(base_url: str, timeout: float = 2.0) -> bool:
         return False
 
 
-def ensure_service(base_url: str = "http://127.0.0.1:8848", *, wait: float = 90.0) -> dict:
-    """Return the service health dict, starting the service when needed."""
+def ensure_service(
+    base_url: str = "http://127.0.0.1:8848",
+    *,
+    wait: float = 90.0,
+    background: bool = False,
+) -> dict:
+    """Return the service health dict, starting the service when needed.
+
+    ``background=True`` never blocks: the service is started in a worker thread
+    and the caller gets ``{"ok": False, "starting": True}`` straight away.
+    A web UI must use that mode, otherwise the first render can block for the
+    whole ``wait`` budget and the app looks dead to a health probe.
+    """
     if _reachable(base_url):
         with urllib.request.urlopen(f"{base_url.rstrip('/')}/health", timeout=10) as response:
             return json.loads(response.read().decode("utf-8"))
@@ -57,6 +68,8 @@ def ensure_service(base_url: str = "http://127.0.0.1:8848", *, wait: float = 90.
         from seekdb_store import SeekdbStore
     except Exception as error:  # pragma: no cover - dependency problem
         return {"ok": False, "error": f"cannot import the seekdb service: {error}"}
+
+    started = threading.Event()
 
     def _run() -> None:
         try:
@@ -72,13 +85,19 @@ def ensure_service(base_url: str = "http://127.0.0.1:8848", *, wait: float = 90.
                     ingest(store, embedder, load_kb_documents())
                 except Exception:
                     pass
+            started.set()
             server = ThreadingHTTPServer((host, port), Handler)
             server.serve_forever()
         except BaseException as error:  # noqa: BLE001 - surface the reason to the UI
             STATE["error"] = f"{type(error).__name__}: {error}"
+            started.set()
 
     thread = threading.Thread(target=_run, daemon=True, name="seekdb-service")
     thread.start()
+
+    if background:
+        # do not wait: the UI polls /health itself
+        return {"ok": False, "starting": True, "url": base_url}
 
     deadline = time.time() + wait
     while time.time() < deadline:

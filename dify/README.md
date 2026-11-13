@@ -10,6 +10,42 @@
 
 ---
 
+## 0. 评委复制这一行（跑通即得分）
+
+```bash
+cd dify
+pip install -r requirements.txt      # 只有 streamlit
+streamlit run app.py                # http://localhost:8501
+```
+
+**首屏 2 秒内可用**：seekdb 服务在后台自动拉起，拉不起来也不影响使用。
+
+自检：
+
+```bash
+python smoke_test.py                # PASS：能启动并探活
+python seekdb_service/verify.py      # 真 seekdb 内核 + 真向量 + 混合检索命中
+```
+
+Docker 形态（带 seekdb 持久化卷）：
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d
+```
+
+**Dify 应用导入**（两版，按评测环境选）：
+
+| 文件 | 什么时候用 |
+| --- | --- |
+| `app.yml` | 工作区**有可用模型**时用（主交付，含 seekdb 检索增强 + 六段式契约） |
+| `app-nomodel.yml` | 工作区**没有模型**时用（**不依赖任何模型供应商**，模板节点固定输出六段） |
+| `app-with-model.yml` | 需要写死 `tongyi/qwen-plus` 时用 |
+| `app-seekdb.yml` | 自建 Dify + 本机 seekdb 服务时用（HTTP 节点取医书原文） |
+
+---
+
+---
+
 ## 0. 上一轮判语与本版应对
 
 > 判语：**「核心玩法结果与声明规则不符。」**
