@@ -98,12 +98,7 @@ docker compose --profile seekdb up -d   # 额外起 seekdb + 知识服务
 | `requirements.txt` / `.env.example` | 依赖与配置样例 |
 | `screenshots/` | Qoder 对话截图 + Sites 发布截图 + 运行界面（见 `PROMPT.md` §5） |
 
-在线演示：
-
-```text
-公网 Demo（cloudflared 隧道，地址会变）：https://clocks-remains-claire-serious.trycloudflare.com
-Qoder Sites（永久链接，发布后回填）：https://________________.qoder.site
-```
+在线演示：**Qoder Sites 已发布** —— <https://sql-review-assistant-8ptbxy0nhc9.qoder.zone/>（未登录可打开，页面内可直接体验 15 条规则审查）。
 
 ---
 
@@ -111,29 +106,27 @@ Qoder Sites（永久链接，发布后回填）：https://________________.qoder
 
 ### 3.1 环境
 
-| 项 | 版本 / 要求 |
-| --- | --- |
-| Python | 3.10+（实测 3.13） |
-| 依赖 | `pip install -r requirements.txt`（streamlit / pylibseekdb / onnxruntime / tokenizers / numpy，均为实测无冲突版本） |
-| 模型文件 | `stepfun/public/models/bge-small-zh-v1.5`（tokenizer.json + onnx/model_int8.onnx，22.8 MiB）。仓库不提交大文件，用 `npm run model:fetch`（在 `stepfun/` 下）或直接下载 model repo 获取 |
-| seekdb | 嵌入式（`pylibseekdb`，零外部依赖）或服务端（`oceanbase/seekdb` 容器，见 `../dify/seekdb_service/docker-compose.yml`） |
-| 大模型 | 可选。魔搭 `MODELSCOPE_API_KEY` / StepFun `STEPFUN_API_KEY` / MiniMax `MINIMAX_API_KEY`，均为 OpenAI 兼容；**不填也能跑**（规则 + seekdb 检索） |
+**主功能（规则审查 + 交互界面）只需要 Python 3.9+，零第三方依赖。**
+seekdb 检索、向量模型、大模型深审都是**可选增强**，不装也能跑完整主要功能。
 
 ### 3.2 启动
 
 ```bash
 cd qoder
-pip install -r requirements.txt
-
-# 方式 A：一键（应用会自动拉起 seekdb 服务）
-streamlit run app.py
-
-# 方式 B：先单独起服务（两个终端）
-python ../dify/seekdb_service/serve.py --port 8848
-streamlit run app.py
+bash start.sh          # 或 python3 run.py   ->  http://127.0.0.1:8501
 ```
 
-打开 <http://localhost:8501>。左侧应显示「seekdb 已就绪 · 模式 embedded · 知识块 19」。
+- `/`            交互式审查界面（粘 SQL → 点「开始审查」→ 三级结果，与 Qoder Sites 页面同一套规则）
+- `/health`      {"ok": true, ...}
+- `POST /api/review`   {"sql": "..."} -> 同一规则引擎的 JSON 输出
+
+可选增强（不影响评审主功能）：
+
+```bash
+pip install -r requirements.txt       # Streamlit 界面：streamlit run app.py
+pip install -r requirements-seekdb.txt # 真·seekdb 检索与审查历史落库
+python seekdb_service/fetch_model.py   # 取一次 bge-small-zh INT8 权重（约 23 MiB）
+```
 
 ### 3.3 Qoder Sites 发布
 

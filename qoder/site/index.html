@@ -273,21 +273,18 @@ SELECT DBMS_HYBRID_SEARCH.GET_SQL(
 <div class="card">
 <pre class="cmd"># 1) 克隆
 git clone https://github.com/tangtang-cx/seekdb.git
-cd seekdb/Qoder
+cd seekdb/qoder
 
-# 2) 核心依赖（只有 streamlit，装不上重依赖也不影响启动）
-pip install -r requirements.txt
+# 2) 启动（零依赖，只用 Python 标准库，无需 pip install）
+python3 run.py            # 或 bash start.sh   -&gt;  http://127.0.0.1:8501
 
-# 3) 可选：启用真·seekdb + 本地 bge 向量
-pip install -r requirements-seekdb.txt
-python ../dify/seekdb_service/fetch_model.py
+# 3) 自检
+curl -s localhost:8501/health        # {"ok": true, ...}
+python tests/test_rules.py -v        # 23 passed
 
-# 4) 启动（应用会自动在后台拉起 seekdb 知识服务）
-streamlit run app.py
-
-# 5) 自检
-python tests/test_rules.py -v      # 22 passed
-python tests/test_app_smoke.py -v  # 1 passed</pre>
+# 可选增强（不影响主要功能）
+pip install -r requirements.txt &amp;&amp; streamlit run app.py
+pip install -r requirements-seekdb.txt &amp;&amp; python seekdb_service/fetch_model.py</pre>
 </div>
 
 <h2>⑥ 界面实拍</h2>
@@ -342,7 +339,7 @@ const RULES = [
     msg:"LIKE '%xxx' 无法使用索引，只能全表扫描。",
     fix:"改成前缀匹配 LIKE 'xxx%'，或改用全文索引。" },
   { id:'OB-006', level:'warn', title:'索引列被函数包裹',
-    re:/\b(where|and|or)\b[^;\n]{0,400}?\b(year|month|day|date|date_format|substring|left|right|lower|upper|concat)\s*\(\s*[a-z_][a-z0-9_]*\s*\)/i,
+    re:/\b(where|and|or|on|group\s+by|order\s+by)\b[^;]{0,400}?\b(year|month|day|date|date_format|substring|left|right|lower|upper|concat|ifnull|trim)\s*\(\s*[a-z_][a-z0-9_]*(\s*\.\s*[a-z_][a-z0-9_]*)?\s*\)/i,
     msg:'在 WHERE 里对列使用函数会让普通索引失效。',
     fix:'改成范围条件（>= / <），或建函数索引 / 生成列索引。' },
   { id:'OB-007', level:'warn', title:'深分页 OFFSET',
@@ -373,11 +370,10 @@ const RULES = [
     re:/^\s*(select|with)\b/i,
     msg:'查询未附带执行计划验证信息。',
     fix:'用 EXPLAIN / EXPLAIN FORMAT=JSON 确认命中索引与扫描行数。' },
-  { id:'OB-014', level:'info', title:'疑似隐式类型转换',
-    re:/\b([a-z_][a-z0-9_]*)\s*=\s*(\d{1,18})\b/i,
-    msg:'数值字面量与字符串列比较会触发隐式类型转换，导致索引失效。',
-    fix:'让字面量类型与列类型一致（给数字列写数字、字符串列写字符串）。',
-    needWhere:true },
+  { id:'OB-014', level:'info', title:'数值列写成字符串字面量',
+    re:/\b([a-z_][a-z0-9_]*)\s*(?:=|<>|!=)\s*'(\d{1,18})'/i,
+    msg:'数值列与字符串字面量比较会触发隐式类型转换，导致索引失效。',
+    fix:'数值列直接写数字（id = 123），不要加引号。' },
   { id:'OB-015', level:'info', title:'COUNT(*) 与 COUNT(1)',
     re:/\bcount\s*\(\s*1\s*\)/i,
     msg:'现代 MySQL 协议 / OceanBase 中 COUNT(*) 已走索引优化，与 COUNT(1) 基本等价。',
