@@ -1,13 +1,17 @@
 # Qoder 赛题 · 验证样例（VALIDATION.md）
 
-> **先起服务**（零依赖，任何装了 Python 3.9+ 的机器都能跑）：
+> **第 0 步：主功能自检**（零依赖，任何装了 Python 3.9+ 的机器都能跑，数秒结束、退出码 0）：
 >
 > ```bash
 > cd qoder
-> bash start.sh            # 或 python3 run.py   ->  http://127.0.0.1:8501
+> python run.py            # -> SELFCHECK PASS (4/4 用例, 15 条规则)
 > ```
 >
-> 下面的每个样例都可以用 `curl` 直接复核，预期输出与实际运行**逐字一致**。
+> **第 1 步：起服务做交互复核**（下面每个样例都可以用 `curl` 直接验，预期输出与实际运行**逐字一致**）：
+>
+> ```bash
+> python run.py --serve    # 或 bash start.sh   ->  http://127.0.0.1:8501
+> ```
 
 ## 样例 A：慢查询 + 深分页（核心玩法）
 

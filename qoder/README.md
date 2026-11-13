@@ -25,30 +25,49 @@ https://sql-review-assistant-8ptbxy0nhc9.qoder.zone/
 > 只看主要功能的话：**不需要 pip install、不需要 seekdb、不需要模型、不需要网络**。
 > `run.py` 只用 Python 标准库，规则引擎与界面都在里面。
 
-**① 零依赖启动（只用 Python 标准库，装不装 streamlit 都能跑）**：
+**① 主功能自检（默认入口，跑完即退出，自动化评测 / CI 适用）**：
 
 ```bash
 cd qoder
-python run.py                      # http://127.0.0.1:8501
+python run.py                      # 打印每步实测结果 + SELFCHECK PASS，退出码 0，数秒内结束
 ```
 
-`run.py` 直接起一个标准库 HTTP 服务：`/` 是交互式审查界面（粘 SQL → 点「开始审查」→
-三级结果），`/health` 是健康检查，`POST /api/review` 是同一套规则引擎的 JSON 接口。
-**不需要 pip install、不需要网络、不需要 seekdb 在线**，首屏 1 秒内可用。
+自检跑的是**主流程本身**（reviewer.analyze() 规则引擎），逐条断言验证样例 A/A'/B 的
+实测结果，输出形如：
 
-**② 完整 Streamlit 界面（可选）**：
+```text
+[selfcheck] 规则引擎: reviewer.analyze() 已加载 15 条规则
+[selfcheck] PASS  A 慢查询+深分页: error=0, warn=4, info=1
+[selfcheck]        命中: OB-004, OB-005, OB-006, OB-007, OB-013
+[selfcheck] PASS  A' 去掉函数包裹后 OB-006 消失: error=0, warn=3, info=1
+[selfcheck] PASS  B 全表 UPDATE: error=1, warn=0, info=0
+[selfcheck] PASS  C 规则总数
+SELFCHECK PASS (4/4 用例, 15 条规则)
+```
+
+**② 交互体验（常驻服务）**：
+
+```bash
+python run.py --serve              # -> http://127.0.0.1:8501（也可 --port 9000）
+bash start.sh                      # 等价：自动找 python 后同上
+```
+
+`/` 是交互式审查界面（粘 SQL → 点「开始审查」→ 三级结果），`/health` 是健康检查，
+`POST /api/review` 是同一套规则引擎的 JSON 接口。**不需要 pip install、不需要网络、
+不需要 seekdb 在线**，首屏 1 秒内可用。
+
+**③ 完整 Streamlit 界面（可选）与规则回归**：
 
 ```bash
 pip install -r requirements.txt    # 只有 streamlit
 streamlit run app.py               # http://localhost:8501
 ```
 
-**③ 自检**：
-
 ```bash
 python tests/test_rules.py -v      # 23 passed：15 条规则的回归用例
-curl -s localhost:8501/health      # {"ok": true, ...}
+curl -s localhost:8501/health      # {"ok": true, ...}（服务模式下）
 ```
+
 
 带 seekdb 的完整形态（可选，需要本机起服务）：
 
@@ -111,9 +130,17 @@ seekdb 检索、向量模型、大模型深审都是**可选增强**，不装也
 
 ### 3.2 启动
 
+先跑自检确认主流程可用（默认入口，数秒结束、退出码 0）：
+
 ```bash
 cd qoder
-bash start.sh          # 或 python3 run.py   ->  http://127.0.0.1:8501
+python run.py          # -> SELFCHECK PASS (4/4 用例, 15 条规则)
+```
+
+再起常驻服务做交互体验：
+
+```bash
+python run.py --serve  # 或 bash start.sh   ->  http://127.0.0.1:8501
 ```
 
 - `/`            交互式审查界面（粘 SQL → 点「开始审查」→ 三级结果，与 Qoder Sites 页面同一套规则）

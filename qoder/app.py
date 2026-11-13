@@ -28,7 +28,7 @@ except ModuleNotFoundError:
     # 直接起零依赖 HTTP 服务，界面与接口照常可用。
     from run import main as _serve
 
-    raise SystemExit(_serve())
+    raise SystemExit(_serve(["--serve"]))
 
 # ---------------------------------------------------------------------------
 # 裸跑自举：`python app.py` 时 Streamlit 不会启动服务器，脚本会静默退出，
@@ -46,7 +46,7 @@ def _inside_streamlit() -> bool:
 if not _inside_streamlit() and __name__ == "__main__":
     from run import main as _serve
 
-    raise SystemExit(_serve())
+    raise SystemExit(_serve(["--serve"]))
 
 HERE = Path(__file__).resolve().parent
 # make the project importable no matter how the app is launched
