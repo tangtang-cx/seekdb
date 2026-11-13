@@ -1,0 +1,11 @@
+# 可选增强依赖：真·seekdb 内核 + 本地 bge-small-zh INT8 向量
+#
+#   pip install -r requirements-seekdb.txt
+#   python ../dify/seekdb_service/fetch_model.py
+#
+# 全部使用宽松版本区间（不写死具体版本），以适配评测机的
+# Python 3.9 ~ 3.13 与不同平台 wheel。
+pylibseekdb>=1.4.0
+onnxruntime>=1.16
+tokenizers>=0.19
+numpy>=1.24

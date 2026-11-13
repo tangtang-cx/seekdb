@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>数据库代码审查助手 · Qoder × seekdb</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #171a23; --line: #262b38; --text: #e6e9f0;
+    --muted: #98a2b3; --err: #ff6b6b; --warn: #ffa94d; --info: #74c0fc; --ok: #69db7c;
+    --accent: #4c8dff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; line-height: 1.6; }
+  a { color: var(--accent); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 20px 72px; }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 24px; margin-bottom: 28px; }
+  h1 { font-size: 30px; margin: 0 0 8px; }
+  h2 { font-size: 20px; margin: 36px 0 12px; padding-left: 10px; border-left: 3px solid var(--accent); }
+  .sub { color: var(--muted); margin: 0; }
+  .badges { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .badge { border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; font-size: 12px; color: var(--muted); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+  .card h3 { margin: 0 0 8px; font-size: 16px; }
+  .card p, .card li { color: var(--muted); font-size: 14px; }
+  textarea { width: 100%; min-height: 150px; background: #0b0d13; color: var(--text); border: 1px solid var(--line);
+             border-radius: 8px; padding: 12px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 10px 20px; font-size: 15px; cursor: pointer; }
+  button.ghost { background: transparent; border: 1px solid var(--line); color: var(--muted); }
+  .metrics { display: flex; gap: 14px; margin: 14px 0 6px; flex-wrap: wrap; }
+  .metric { border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; min-width: 92px; }
+  .metric b { display: block; font-size: 24px; }
+  .metric span { font-size: 12px; color: var(--muted); }
+  .finding { border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-top: 12px; background: #12151d; }
+  .finding .lvl { font-size: 11px; border-radius: 6px; padding: 2px 8px; margin-right: 8px; }
+  .lvl.error { background: rgba(255,107,107,.15); color: var(--err); }
+  .lvl.warn  { background: rgba(255,169,77,.15);  color: var(--warn); }
+  .lvl.info  { background: rgba(116,192,252,.15); color: var(--info); }
+  .finding pre { background: #0b0d13; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; overflow-x: auto; font-size: 12px; color: #c9d1d9; }
+  code { background: #0b0d13; border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; font-size: 13px; }
+  pre.cmd { background: #0b0d13; border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow-x: auto; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 7px 8px; text-align: left; vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; }
+  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .shots img { width: 100%; border: 1px solid var(--line); border-radius: 10px; }
+  .shots figcaption { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  footer { margin-top: 46px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+  .ok { color: var(--ok); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>🧐 数据库代码审查助手 · Qoder × seekdb</h1>
+  <p class="sub">用 Qoder 开发、用 seekdb 做知识与历史存储的 SQL 审查工具：15 条确定性规则 + 大模型深审 + 可导出评审报告。</p>
+  <div class="badges">
+    <span class="badge">Qoder 生成</span>
+    <span class="badge">seekdb 混合检索（向量 + 全文 + RRF）</span>
+    <span class="badge">本地 bge-small-zh INT8 向量</span>
+    <span class="badge">Streamlit</span>
+    <span class="badge">OceanBase / seekdb / MySQL</span>
+  </div>
+</header>
+
+<h2>① 解决的问题</h2>
+<div class="grid">
+  <div class="card">
+    <h3>评审靠人肉，慢且不稳</h3>
+    <p>写完 SQL 不知道会不会全表扫、有没有索引失效；评审时凭经验挑刺，漏项；新人反复踩同样的坑（深分页、索引列套函数、<code>SELECT *</code>）。</p>
+  </div>
+  <div class="card">
+    <h3>本项目怎么解决</h3>
+    <p>把 15 条 OceanBase / MySQL 通用反模式固化成<strong>确定性规则</strong>（毫秒级、离线、可进 CI），先用 <strong>seekdb</strong> 混合检索取回官方文档依据，再交给大模型做语义级深审，最后产出<strong>可导出的分级评审报告</strong>。</p>
+  </div>
+</div>
+
+<h2>② 核心功能</h2>
+<div class="card">
+  <table>
+    <tr><th style="width:190px">功能</th><th>说明</th></tr>
+    <tr><td>静态规则扫描</td><td>15 条规则分 🔴阻断 / 🟠警告 / 🔵提示，每条给出「问题 + 建议 + 命中片段」，可导出 Markdown / JSON</td></tr>
+    <tr><td>seekdb 医书依据</td><td>每次审查先在 seekdb 里做「向量 + 全文 + RRF」混合检索（融合在 seekdb 内核内完成），把检索到的官方文档片段作为审查依据，界面可展开核对</td></tr>
+    <tr><td>审查历史落库</td><td>每一轮审查结果写回 seekdb 的 <code>qoder_review_log</code> 表，界面里的历史列表是实时从 seekdb 查出来的</td></tr>
+    <tr><td>大模型深审</td><td>可选，走 OpenAI 兼容协议（MiniMax / StepFun / 魔搭皆可），把检索到的依据一起喂给模型</td></tr>
+    <tr><td>回归测试</td><td>22 个规则用例 + 1 个 Streamlit UI 冒烟用例，全部本地可跑</td></tr>
+  </table>
+</div>
+
+<h2>③ 现场体验：把下面的 SQL 粘进去点「开始审查」</h2>
+<div class="card">
+  <textarea id="sql">SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id
+WHERE DATE(o.created_at) = '2026-01-01'
+  AND o.status IN ('NEW', 'PAID')
+  AND c.city LIKE '%杭州%'
+ORDER BY o.created_at DESC
+LIMIT 20, 200000;</textarea>
+  <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
+    <button id="run">开始审查</button>
+    <button class="ghost" id="reset">重置示例</button>
+    <span id="note" class="sub" style="align-self:center"></span>
+  </div>
+  <div class="metrics">
+    <div class="metric"><b style="color:var(--err)">0</b><span>🔴 阻断</span></div>
+    <div class="metric"><b style="color:var(--warn)">0</b><span>🟠 警告</span></div>
+    <div class="metric"><b style="color:var(--info)">0</b><span>🔵 提示</span></div>
+  </div>
+  <div id="out"></div>
+</div>
+
+<h2>④ 与 seekdb 的实际结合</h2>
+<div class="grid">
+  <div class="card">
+    <h3>表结构（真·seekdb）</h3>
+<pre class="cmd">CREATE TABLE `dify_knowledge_base` (
+  id VARBINARY(512) PRIMARY KEY NOT NULL,
+  document STRING,
+  embedding VECTOR(512),
+  metadata JSON,
+  FULLTEXT INDEX idx_fts (document) WITH PARSER ik,
+  VECTOR INDEX idx_vec (embedding) WITH(distance=cosine,
+       type=hnsw, lib=vsag, m=16, ef_construction=200, ef_search=64)
+) ORGANIZATION = HEAP;
+
+CREATE TABLE `qoder_review_log` (   -- 审查历史落库
+  id VARBINARY(512) PRIMARY KEY NOT NULL,
+  created_at TIMESTAMP(6), engine STRING, finding_count INT,
+  severity STRING, sql_text STRING, summary STRING, details JSON,
+  FULLTEXT INDEX idx_review_sql (sql_text) WITH PARSER ik
+) ORGANIZATION = HEAP;</pre>
+  </div>
+  <div class="card">
+    <h3>检索链路（融合发生在 seekdb 内核内）</h3>
+<pre class="cmd">SET @search_parm = '{"query":{"query_string":{"fields":["document"],
+  "query":"..."}},"knn":{"field":"embedding","k":12,
+  "query_vector":[...]},"rank":{"rrf":{}},"size":4}';
+
+SELECT DBMS_HYBRID_SEARCH.GET_SQL(
+  'dify_knowledge_base', @search_parm);  -- 执行这条即可</pre>
+    <p style="margin-top:10px;">向量：本地 <code>bge-small-zh-v1.5</code> INT8 ONNX（512 维，L2 归一化）；<br>
+    全文：IK 分词器；<br>融合：RRF（k=60），由 seekdb 内核完成。</p>
+  </div>
+</div>
+
+<h2>⑤ 运行说明</h2>
+<div class="card">
+<pre class="cmd"># 1) 克隆
+git clone https://github.com/tangtang-cx/ai-ecosystem.git
+cd ai-ecosystem/qoder
+
+# 2) 核心依赖（只有 streamlit，装不上重依赖也不影响启动）
+pip install -r requirements.txt
+
+# 3) 可选：启用真·seekdb + 本地 bge 向量
+pip install -r requirements-seekdb.txt
+python ../dify/seekdb_service/fetch_model.py
+
+# 4) 启动（应用会自动在后台拉起 seekdb 知识服务）
+streamlit run app.py
+
+# 5) 自检
+python tests/test_rules.py -v      # 22 passed
+python tests/test_app_smoke.py -v  # 1 passed</pre>
+</div>
+
+<h2>⑥ 界面实拍</h2>
+<div class="shots">
+  <figure style="margin:0"><img src="screenshots/04-app-home.png" alt="应用界面" loading="lazy" />
+  <figcaption>应用主界面：左侧模型配置 + seekdb 连接状态，右侧 SQL 输入与三级结果</figcaption></figure>
+  <figure style="margin:0"><img src="screenshots/05-app-review-results.png" alt="审查结果" loading="lazy" />
+  <figcaption>审查结果：🔴0 / 🟠3 / 🔵1，并展开显示规则命中片段</figcaption></figure>
+</div>
+
+<h2>⑦ 验证样例</h2>
+<div class="card">
+  <table>
+    <tr><th>输入</th><th>预期</th></tr>
+    <tr><td><code>SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id WHERE DATE(o.created_at)='2026-01-01' LIMIT 20, 200000;</code></td>
+        <td>OB-004 / OB-005 / OB-007 等警告；seekdb 能检索到医书片段；审查记录写入 <code>qoder_review_log</code></td></tr>
+    <tr><td><code>UPDATE orders SET status = 'ARCHIVED';</code></td><td>OB-001 阻断级问题</td></tr>
+    <tr><td>带 <code>VECTOR(512)</code> + HNSW/IK 索引的建表语句</td><td>不误报 OB-003（缺主键）</td></tr>
+  </table>
+</div>
+
+<footer>
+  本项目由 <strong>Qoder</strong> 开发，使用 <strong>seekdb</strong> 作为知识与历史存储。<br>
+  代码仓库：<a href="https://github.com/tangtang-cx/ai-ecosystem">github.com/tangtang-cx/ai-ecosystem</a>
+  （分支 <code>qoder</code>）· Qoder 账号 UID：<code>（见提交材料）</code>
+</footer>
+
+</div>
+
+<script>
+const RULES = [
+  { id:'OB-001', level:'error', title:'UPDATE / DELETE 缺少 WHERE',
+    re:/\b(update|delete\s+from)\b(?![\s\S]{0,400}?\bwhere\b)/i,
+    msg:'语句没有 WHERE 条件，会更新/删除全表数据。',
+    fix:'补全 WHERE 条件；生产环境先在同事务里 SELECT 校验影响行数。' },
+  { id:'OB-002', level:'error', title:'JOIN 缺少关联条件',
+    re:/\bjoin\b(?![^;]{0,400}?\b(on|using)\b)/i,
+    msg:'存在 JOIN 但没有 ON / USING，会产生笛卡尔积。',
+    fix:'补上 ON 关联条件，并确认两侧字段类型一致。' },
+  { id:'OB-003', level:'error', title:'建表缺少主键',
+    re:/\bcreate\s+(temporary\s+)?table\b(?![^;]{0,2000}?\bprimary\s+key\b)/i,
+    msg:'建表语句里没有 PRIMARY KEY。',
+    fix:'加上 PRIMARY KEY（推荐有序 BIGINT，避免随机 UUID 主键）。' },
+  { id:'OB-004', level:'warn', title:'SELECT * 列出全部列',
+    re:/\bselect\s+\*/i,
+    msg:'SELECT * 会带来无效 IO、回表与 schema 变更风险。',
+    fix:'显式列出需要的列。' },
+  { id:'OB-005', level:'warn', title:'LIKE 前置通配符',
+    re:/\blike\s+'%/i,
+    msg:"LIKE '%xxx' 无法使用索引，只能全表扫描。",
+    fix:"改成前缀匹配 LIKE 'xxx%'，或改用全文索引。" },
+  { id:'OB-006', level:'warn', title:'索引列被函数包裹',
+    re:/\b(where|and|or)\b[^;\n]{0,400}?\b(year|month|day|date|date_format|substring|left|right|lower|upper|concat)\s*\(\s*[a-z_][a-z0-9_]*\s*\)/i,
+    msg:'在 WHERE 里对列使用函数会让普通索引失效。',
+    fix:'改成范围条件（>= / <），或建函数索引 / 生成列索引。' },
+  { id:'OB-007', level:'warn', title:'深分页 OFFSET',
+    re:/\blimit\s+\d+\s*,\s*(\d{4,})|\boffset\s+(\d{4,})\b/i,
+    msg:'大 OFFSET 会让数据库扫描并丢弃前面的大量行。',
+    fix:'改成游标分页（WHERE id > last_id ORDER BY id LIMIT n）。' },
+  { id:'OB-008', level:'warn', title:'NOT IN / != 与 NULL',
+    re:/\bnot\s+in\s*\(|\b(!=|<>)\b/i,
+    msg:'NOT IN 子查询或 != 比较一旦遇到 NULL，结果集会被意外放大或清空。',
+    fix:'改用 NOT EXISTS，并把列定义为 NOT NULL。' },
+  { id:'OB-009', level:'warn', title:'IN 列表过长',
+    re:/\bin\s*\(([^()]*)\)/i, count:true,
+    msg:'IN 列表过长会拖慢解析并撑大执行计划。',
+    fix:'改用 JOIN 临时表，或分批提交。' },
+  { id:'OB-010', level:'warn', title:'SELECT ... FOR UPDATE 无 WHERE',
+    re:/\bfor\s+update\b(?![\s\S]{0,400}?\bwhere\b)/i,
+    msg:'没有 WHERE 的 FOR UPDATE 会锁住整表。',
+    fix:'补 WHERE 条件缩小锁范围，并保证事务足够短。' },
+  { id:'OB-011', level:'info', title:'UNION 去重开销',
+    re:/\bunion\b(?!\s+all\b)/i,
+    msg:'UNION 需要去重（排序或哈希），比 UNION ALL 慢。',
+    fix:'确认不需要去重时改成 UNION ALL。' },
+  { id:'OB-012', level:'info', title:'TRUNCATE 代替 DELETE 清表',
+    re:/\btruncate\s+(table\s+)?/i,
+    msg:'TRUNCATE 是 DDL 语义，不能回滚且会重置自增。',
+    fix:'需要可回滚就用 DELETE；只是清空重建且能接受 DDL 时用 TRUNCATE。' },
+  { id:'OB-013', level:'info', title:'缺少执行计划验证',
+    re:/^\s*(select|with)\b/i,
+    msg:'查询未附带执行计划验证信息。',
+    fix:'用 EXPLAIN / EXPLAIN FORMAT=JSON 确认命中索引与扫描行数。' },
+  { id:'OB-014', level:'info', title:'疑似隐式类型转换',
+    re:/\b([a-z_][a-z0-9_]*)\s*=\s*(\d{1,18})\b/i,
+    msg:'数值字面量与字符串列比较会触发隐式类型转换，导致索引失效。',
+    fix:'让字面量类型与列类型一致（给数字列写数字、字符串列写字符串）。',
+    needWhere:true },
+  { id:'OB-015', level:'info', title:'COUNT(*) 与 COUNT(1)',
+    re:/\bcount\s*\(\s*1\s*\)/i,
+    msg:'现代 MySQL 协议 / OceanBase 中 COUNT(*) 已走索引优化，与 COUNT(1) 基本等价。',
+    fix:'统一写 COUNT(*) 语义更清晰。' },
+];
+const LEVELS = ['error','warn','info'];
+const LEVEL_LABEL = { error:'阻断', warn:'警告', info:'提示' };
+
+function normalize(sql) {
+  return sql.replace(/(--[^\n]*|\/\*[\s\S]*?\*\/)/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function snippet(text, start, end) {
+  const left = Math.max(0, start - 30), right = Math.min(text.length, end + 30);
+  return (left > 0 ? '...' : '') + text.slice(left, right).trim() + (right < text.length ? '...' : '');
+}
+function analyze(raw) {
+  const sql = normalize(raw);
+  const out = [];
+  for (const rule of RULES) {
+    if (rule.count) {
+      const m = rule.re.exec(sql);
+      if (!m) continue;
+      const items = m[1].split(',').length;
+      if (items <= 50) continue;
+      out.push({ id: rule.id, level: rule.level, title: rule.title, msg: rule.msg, fix: rule.fix, snippet: '' });
+      continue;
+    }
+    const m = rule.re.exec(sql);
+    if (!m) continue;
+    if (rule.needWhere && !/\bwhere\b/i.test(sql)) continue;
+    out.push({ id: rule.id, level: rule.level, title: rule.title, msg: rule.msg, fix: rule.fix, snippet: snippet(sql, m.index, m.index + m[0].length) });
+  }
+  out.sort((a, b) => LEVELS.indexOf(a.level) - LEVELS.indexOf(b.level) || a.id.localeCompare(b.id));
+  return out;
+}
+function render(findings) {
+  const metrics = document.querySelectorAll('.metric b');
+  const counts = { error:0, warn:0, info:0 };
+  findings.forEach(f => counts[f.level]++);
+  metrics[0].textContent = counts.error; metrics[1].textContent = counts.warn; metrics[2].textContent = counts.info;
+  const out = document.getElementById('out');
+  if (!findings.length) { out.innerHTML = '<p class="ok" style="margin-top:12px">✅ 没有发现明显问题。</p>'; return; }
+  out.innerHTML = findings.map(f => `
+    <div class="finding">
+      <div><span class="lvl ${f.level}">${LEVEL_LABEL[f.level]}</span><code>${f.id}</code> <b>${f.title}</b></div>
+      ${f.snippet ? '<pre>' + f.snippet.replace(/</g,'&lt;') + '</pre>' : ''}
+      <div style="font-size:14px;margin-top:6px"><b>问题</b>：${f.msg}</div>
+      <div style="font-size:14px;margin-top:2px"><b>建议</b>：${f.fix}</div>
+    </div>`).join('');
+}
+const DEFAULT_SQL = document.getElementById('sql').value;
+document.getElementById('run').addEventListener('click', () => {
+  const findings = analyze(document.getElementById('sql').value);
+  render(findings);
+  document.getElementById('note').textContent = `命中 ${findings.length} 条规则（与 Streamlit 应用同源规则）`;
+});
+document.getElementById('reset').addEventListener('click', () => {
+  document.getElementById('sql').value = DEFAULT_SQL;
+  document.getElementById('out').innerHTML = '';
+  document.getElementById('note').textContent = '';
+});
+</script>
+</body>
+</html>
