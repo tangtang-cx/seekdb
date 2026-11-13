@@ -9,7 +9,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 代码仓库 | `https://<用户名>:<令牌>@github.com/tangtang-cx/ai-ecosystem.git`（**私有**，官方不允许 Public 参赛） |
+| 代码仓库 | `https://<用户名>:<令牌>@github.com/tangtang-cx/seekdb.git`（**私有**，官方不允许 Public 参赛） |
 | 分支 | `2026-competition-ecosystem`（官方基线同名分支；其父提交 = 官方基线 `d647275c`） |
 | Commit | `02ae3faf7f9b1b235369bfac9f8c64af8d38a393`（该分支当前 head） |
 | 资产目录 | `dify/`（同时含 `qoder/` `gaode/` `stepfun/` `minimax/` `modelscope/`） |
@@ -81,8 +81,8 @@
 ## 3. 一键部署（干净机器）
 
 ```bash
-git clone https://github.com/tangtang-cx/ai-ecosystem.git
-cd ai-ecosystem
+git clone https://github.com/tangtang-cx/seekdb.git
+cd seekdb
 bash Dify/deploy/quickstart.sh
 ```
 

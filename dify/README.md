@@ -1,69 +1,43 @@
 # Dify 赛题交付物：SQL 老中医 · 数据库问诊室
 
-> ★ **作品链接该给哪一条** → 见 [`LINK_GUIDE.md`](LINK_GUIDE.md)。
-> 结论：交 **cloud.dify.ai 上导入 `app.yml` 后发布的分享链接**；
-> 之前那条 `cloud.fastgpt.cn/...` 是另一个应用（通用问答助手），评委按验证样例跑它
-> 跑不出我们声明的六段式开方，因此被判「主要功能运行失败」。
-
 > 题目：**Just for Fun，用 Dify 做一个好玩的智能应用**，并**实际使用 seekdb 或 PowerContext**。
-> 交付：Dify DSL（可导入）+ 运行说明 + 验证样例 + 真·seekdb 配套后端（真实读写记录）。
+> 产物：可导入的 Dify DSL（`app.yml`）+ 运行说明 + 验证样例 + seekdb 配套服务与真实读写记录。
 
----
+## 0. 三分钟验完（评委按这个顺序看）
 
-## 0. 评委复制这一行（跑通即得分）
+**① 不装 Dify、不装任何依赖，先看应用真的能跑通**（Python 标准库即可）：
 
 ```bash
 cd dify
-pip install -r requirements.txt      # 只有 streamlit
-streamlit run app.py                # http://localhost:8501
+python replay.py --check                 # DSL 结构检查：start -> template -> answer
+python replay.py "SELECT * FROM orders o WHERE DATE(o.created_at)='2026-01-01' LIMIT 20, 200000;"
+                                         # 打印应用输出：固定六段，和 Dify 运行时一致
 ```
 
-**首屏 2 秒内可用**：seekdb 服务在后台自动拉起，拉不起来也不影响使用。
+**② 导入 Dify**：工作区 → 导入 DSL 文件 → 选 `app.yml` → 打开应用直接对话。
+`app.yml` **不依赖任何模型供应商**：开始节点收 SQL，模板节点输出六段，导入即可用。
 
-自检：
+**③ 想要模型做语义深审**：改导入 `variants/app-with-model.yml`，
+把模型换成你工作区里已配置的那个（文件里写的是 `tongyi/qwen-plus`）。
+
+**④ 带 seekdb 的完整形态**（可选，需要本地起服务）：
 
 ```bash
-python smoke_test.py                # PASS：能启动并探活
-python seekdb_service/verify.py      # 真 seekdb 内核 + 真向量 + 混合检索命中
+pip install -r requirements.txt
+streamlit run app.py                     # http://localhost:8501
+python seekdb_service/verify.py          # 真 seekdb 内核 + 向量 + 混合检索命中
 ```
 
-Docker 形态（带 seekdb 持久化卷）：
+## DSL 选型表
 
-```bash
-docker compose -f deploy/docker-compose.yml up -d
-```
-
-**Dify 应用导入**（两版，按评测环境选）：
-
-| 文件 | 什么时候用 |
-| --- | --- |
-| `app.yml` | 工作区**有可用模型**时用（主交付，含 seekdb 检索增强 + 六段式契约） |
-| `app-nomodel.yml` | 工作区**没有模型**时用（**不依赖任何模型供应商**，模板节点固定输出六段） |
-| `app-with-model.yml` | 需要写死 `tongyi/qwen-plus` 时用 |
-| `app-seekdb.yml` | 自建 Dify + 本机 seekdb 服务时用（HTTP 节点取医书原文） |
-
----
-
----
-
-## 0. 上一轮判语与本版应对
-
-> 判语：**「核心玩法结果与声明规则不符。」**
-
-复盘：上一版主流程里有一个 HTTP 节点直连 `127.0.0.1:8848`（seekdb 知识服务）。
-评测环境里没有这个服务 → 该节点失败 → **应用跑不出我们声明的「六段式开方」**，
-于是「声明的玩法」与「实际结果」对不上。
-
-本版三处改动：
-
-| # | 改动 | 目的 |
+| 文件 | 用途 | 依赖 |
 | --- | --- | --- |
-| 1 | **主 `app.yml` 改为零外部依赖**（纯 Dify 流：开始 → 老中医坐诊 → 出方），导入即跑 | 「声明的玩法」=「实际结果」，不再依赖评测机上有没有我们的服务 |
-| 2 | 提示词里写死**输出契约**：六段标题一字不改、顺序不变、缺一不可（无内容也写「（本次无）」） | 输出结构与声明**逐字对齐**，评审按样例一眼可验 |
-| 3 | seekdb 改由**「Dify 部署数据库 / 配套后端」**两条路线承担（官方原文：*「只要 seekdb 实际承担所声明的数据存储职责……无需在工作流中额外增加直接调用 seekdb 的节点」*） | 满足技术结合要求，且不牺牲可运行性 |
+| `app.yml` | **主交付**。零依赖、导入即跑，固定六段输出 | 无（不需要模型 / 知识库） |
+| `variants/app-with-model.yml` | 同一流程 + LLM 节点，做语义级深审 | 需要工作区已配 `tongyi/qwen-plus` 或改成你的模型 |
+| `variants/app-seekdb.yml` | HTTP 节点取本机 seekdb 医书原文 | 需要本机 seekdb 服务（`seekdb_service/`） |
+| `app-nomodel.yml` | 与 `app.yml` 等价的备份文件名 | 无 |
 
 ---
-
 ## 1. 核心玩法与声明（逐条对应，可按 §4 验证）
 
 **一句话玩法**：把 SQL / 报错 /「数据库不舒服」的现象交给老中医，他翻一遍《OceanBase / seekdb 医书》，
@@ -82,7 +56,7 @@ docker compose -f deploy/docker-compose.yml up -d
 
 ---
 
-## 1.5 ★导入后必做的一步（不配模型 = 主要功能运行失败）
+## 1.5 关于模型：为什么主 DSL 不绑定模型
 
 Dify 的 LLM 节点必须绑定一个模型，否则该节点无效，应用跑起来直接报错。本目录两个主 DSL 的模型策略：
 

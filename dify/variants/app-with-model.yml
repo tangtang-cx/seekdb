@@ -1,14 +1,14 @@
 app:
   description: SQL 老中医 · 数据库问诊室。把 SQL、报错或「数据库不舒服」的描述交给老中医，
     他会按固定六段式给出「医书摘录 / 病灶诊断 / 药方 / 忌口 / 养生建议 / 医嘱小笺」。
-    本文件已指定模型 provider=tongyi / model=qwen-plus（需工作区已配置通义 Key）。
-    若工作区用的是别的模型供应商，请改用 app.yml（留空模型 = 用工作区默认模型）。
-    配套的 seekdb 检索增强版见 app-seekdb.yml。
+    本 DSL 零外部依赖。★导入后必做一步★：点开「老中医坐诊」节点选一个模型
+    （留空 = 用工作区默认模型；若该节点显示「模型不可用」，说明工作区没配默认模型，
+    选一个即可）。配套的 seekdb 检索增强版见 app-seekdb.yml。
   icon: 🩺
   icon_background: '#EFF1F5'
   icon_type: emoji
   mode: advanced-chat
-  name: SQL 老中医 · 数据库问诊室（通义版）
+  name: SQL 老中医 · 数据库问诊室
   use_icon_as_answer_icon: false
 dependencies: []
 kind: app

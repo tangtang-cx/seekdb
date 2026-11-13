@@ -6,12 +6,12 @@
 
 | 项 | 值 |
 | --- | --- |
-| 仓库 | `https://github.com/tangtang-cx/ai-ecosystem` |
+| 仓库 | `https://github.com/tangtang-cx/seekdb` |
 | 分支 | `Dify` |
-| Commit SHA | 取该分支最新 commit 的完整 40 位 SHA（见 <https://github.com/tangtang-cx/ai-ecosystem/commits/Dify>） |
+| Commit SHA | 取该分支最新 commit 的完整 40 位 SHA（见 <https://github.com/tangtang-cx/seekdb/commits/Dify>） |
 
 > 仓库地址格式（平台唯一接受的写法，缺用户名会直接判 `failMsg=4`「执行失败 0.000」）：
-> `https://wzhaihqy:<PAT>@github.com/tangtang-cx/ai-ecosystem.git`
+> `https://wzhaihqy:<PAT>@github.com/tangtang-cx/seekdb.git`
 
 ## 上一轮判语与本版应对
 
