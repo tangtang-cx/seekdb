@@ -113,10 +113,64 @@ LIMIT 20, 200000;
 
 按命中项逐条改写（可直接粘贴执行）：
 
-- OB-006：禁止在索引列上套函数，改成范围条件（>= / <）。
-- OB-007：禁止大 OFFSET 深分页，改游标分页 WHERE id > :last_id。
-...
-## 💊 药方 / ## 🚫 忌口 / ## 🧘 养生建议 / ## 🎋 医嘱小笺
+- **OB-004 SELECT * 取回全部列**：建议：
+- **OB-006 索引列被函数包裹**：函数包裹改范围条件：
+  ```sql
+  WHERE created_at >= '2026-01-01 00:00:00' AND created_at < '2026-01-02 00:00:00'
+  ```
+- **OB-007 深分页 OFFSET**：深分页改游标分页：
+  ```sql
+  WHERE id > :last_id ORDER BY id LIMIT 100
+  ```
+- **OB-013 未验证执行计划**：建议：
+
+改完先看执行计划，确认命中索引与扫描行数：
+
+```sql
+EXPLAIN SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id
+WHERE DATE(o.created_at) = '2026-01-01'
+ORDER BY o.created_at DESC
+LIMIT 20, 200000;
+```
+
+## 🚫 忌口
+
+- 禁止在索引列上套函数，改成范围条件（>= / <）。
+- 禁止大 OFFSET 深分页，改游标分页 WHERE id > :last_id。
+
+## 🧘 养生建议
+
+1. 过滤列、排序列建索引，覆盖索引带上排序列；
+2. 深分页改游标分页：WHERE id > :last_id ORDER BY id LIMIT n；
+3. 大批量写入分批提交，避免长事务；
+4. 变更前 EXPLAIN，生产用 EXPLAIN FORMAT=JSON 看扫描行数。
+
+## 🎋 医嘱小笺
+
+最该先改的是 **OB-004 SELECT * 取回全部列** ——🟠 警告，药到病除就从这一处开始。
+```sql
+-- 先看执行计划，确认命中索引与扫描行数
+EXPLAIN SELECT * FROM orders o JOIN customers c ON o.customer_id = c.id
+WHERE DATE(o.created_at) = '2026-01-01'
+ORDER BY o.created_at DESC
+LIMIT 20, 200000;
+```
+
+## 🚫 忌口
+
+- 禁止在索引列上套函数，改成范围条件（>= / <）。
+- 禁止大 OFFSET 深分页，改游标分页 WHERE id > :last_id。
+
+## 🧘 养生建议
+
+1. 过滤列、排序列建索引，覆盖索引带上排序列；
+2. 深分页改游标分页：WHERE id > :last_id ORDER BY id LIMIT n；
+3. 大批量写入分批提交，避免长事务；
+4. 变更前 EXPLAIN，生产用 EXPLAIN FORMAT=JSON 看扫描行数。
+
+## 🎋 医嘱小笺
+
+最该先改的是 **OB-004 SELECT * 取回全部列** ——🟠 警告，药到病除就从这一处开始。
 ```
 
 关键点：命中项由输入决定——把 `DATE(o.created_at)` 换成 `o.created_at >= '2026-01-01'`，
@@ -208,11 +262,12 @@ LIMIT 20, 200000;
 
 - 📖 医书摘录：出现《医书要点》里与「函数包裹索引列 / 深分页 / SELECT *」相关的条目
 - 🩺 望闻问切：至少 3 条（`SELECT *` 全列回表、`DATE(col)` 让索引失效、`LIMIT 20, 200000` 深分页）
-- 💊 药方：给出显式列 + `created_at >= '2026-01-01' AND created_at < '2026-01-02'` + 游标分页
-  `WHERE o.id > :last_id ORDER BY o.id LIMIT 100` 的可执行改写
+- 💊 药方：逐条给出改写建议，其中 OB-006 附带可粘贴的范围条件改写
+  （`created_at >= '2026-01-01 00:00:00' AND created_at < '2026-01-02 00:00:00'`）、
+  OB-007 附带游标分页改写，最后附 `EXPLAIN <原语句>`
 - 🚫 忌口：不要在索引列套函数、不要大 OFFSET
 - 🧘 养生建议：给 `orders(created_at)` 建索引，必要时用覆盖索引带上排序列
-- 🎋 医嘱小笺：俏皮话 + 点出最该先改的那处
+- 🎋 医嘱小笺：点出最该先改的那处（取第一条命中项）
 
 ### 样例 B：全表更新
 
