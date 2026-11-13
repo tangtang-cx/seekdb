@@ -478,7 +478,9 @@ static void* sk_build_inner(const float* base, long n, long dim)
                               strcmp(algo, "iterative_cagra_search") == 0)) {
     h->ip->build_algo = ITERATIVE_CAGRA_SEARCH;
   } else {
-    h->ip->build_algo = NN_DESCENT;
+    /* hipVS 26.03 ships an iterative CAGRA-search graph builder that is cheaper
+       than the classic NN-Descent pass for the same final graph degree. */
+    h->ip->build_algo = ITERATIVE_CAGRA_SEARCH;
   }
   h->ip->metric = L2Expanded;
   h->ip->graph_degree = (size_t)degree;
