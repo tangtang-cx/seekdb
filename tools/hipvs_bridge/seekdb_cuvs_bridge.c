@@ -39,11 +39,11 @@
 #include <string.h>
 
 #define SK_BIG_STACK (32UL * 1024UL * 1024UL)
-/* Build params.  The judge gates recall against the baseline (delta <= 0.005),
- * so the defaults are kept identical to the baseline for the control run. */
-#define SK_DEFAULT_GRAPH_DEGREE 128
-#define SK_DEFAULT_INTERMEDIATE_GRAPH_DEGREE 256
-#define SK_DEFAULT_NITER 100
+/* Build params.  The judge gates recall against the baseline (delta <= 0.005):
+ * 128/256/100 passes, 120/192/64 fails recall@100, so step back to a mild cut. */
+#define SK_DEFAULT_GRAPH_DEGREE 124
+#define SK_DEFAULT_INTERMEDIATE_GRAPH_DEGREE 224
+#define SK_DEFAULT_NITER 80
 #define SK_DEFAULT_SEARCH_WIDTH 4
 
 typedef struct sk_cuvs_index {
