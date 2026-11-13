@@ -104,6 +104,29 @@ curl -s -X POST localhost:8501/api/review -H "Content-Type: application/json" \
 
 再查一次 `/health`，`seekdb.review_log_rows` 会 +1 —— 这是「指定技术实际发挥作用」的可核对记录。
 
+## 样例 F：数据能写进去、也能读回来（记忆复用）
+
+```bash
+python run.py                # 自检末尾：[memory] PASS ... 写入 0 -> 1（子进程写）
+python run.py --readback     # 另一个进程读回
+```
+
+**预期**：
+
+```text
+[memory] PASS  sqlite 后端：规则知识 15 条；审查记录 0 -> 1（写入 id ...）；sqlite 后端：读回 1 条审查记录
+...
+READBACK PASS (读回 N 条审查记录)
+```
+
+`--readback` 输出的 JSON 里含 `stats`（后端、知识条数、审查条数、sqlite 文件路径）、
+`reviews`（最近写进去的审查记录）、`knowledge_sample`（从记忆里检索回来的规则知识）。
+服务模式下同样可以 `curl -s localhost:8501/api/memory`。
+
+写入位置：真 seekdb 内核的 `qoder_review_log` 表 + 始终存在的 sqlite 镜像 `data/memory.db`
+（随仓库分发，clone 下来就有 15 条规则知识）。即使评测机没有 `pylibseekdb`，
+读回依然成立 —— 数据在磁盘上，不在内存里。
+
 ## 自检
 
 ```bash

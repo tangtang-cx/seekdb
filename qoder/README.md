@@ -51,6 +51,7 @@ SELFCHECK PASS (4/4 用例, 15 条规则)
 | 命令 | 行为 |
 | --- | --- |
 | `python run.py` | 自检 → `SELFCHECK PASS`，退出码 0 |
+| `python run.py --readback` | 读回记忆（写入过的数据/规则知识），打印统计与最近记录 |
 | `python app.py` | 同上（Streamlit 未安装时自动退回本入口） |
 | `bash start.sh` | 同上（脚本自动探测 python3/python） |
 | `python verify.py` | 四项验收（规则引擎 / 自检 / `/health` / `POST /api/review`）→ `VERIFY PASS` |
@@ -112,11 +113,23 @@ docker compose --profile seekdb up -d   # 额外起 seekdb + 知识服务
 | **seekdb** | 数据存储、查询与检索 | ① 规则知识入库到真实表 `qoder_rule_knowledge`（`VECTOR(512)` + IK 全文索引 + HNSW 向量索引），审查时用 **seekdb 混合检索**（全文分支 + 向量分支，**RRF 融合在 seekdb 内核内**）取回该条问题的判定依据，作为 finding 的 `basis` 返回；② 每轮审查结果**写回 seekdb**（表 `qoder_review_log`），可查回记录 id 与累计条数 |
 
 **不是「只装组件、只测连接」**：seekdb 走的是**内嵌真实内核**（`pylibseekdb.open()`，
-无外部服务依赖），每轮审查实际执行「seekdb 检索 → 规则判定 → 写回 seekdb」，
+无外部服务依赖），每轮审查实际执行「seekdb 检索 → 规则判定 → 写回记忆」，
 并在 `/api/review` 的响应里返回 `seekdb` 状态、`review_id` 与每条问题的 `basis`。
 
+**数据能写进去、也能读回来**：每轮审查都会把 SQL、命中规则、严重级别与依据写进记忆库
+（`qoder_review_log`），**读回**用同一套接口：
+
+```bash
+python run.py --readback     # 读回记忆：统计 + 最近审查记录 + 规则知识命中
+curl -s localhost:8501/api/memory   # 同样的内容（服务模式）
+```
+
+记忆库有两层：真 seekdb 内核（`qoder_rule_knowledge` + `qoder_review_log`），
+以及**始终存在**的标准库 sqlite 镜像 `data/memory.db`（随仓库分发，clone 下来就有
+15 条规则知识；内核不可用或跨重启不持久时，读回依然成立）。
+
 真内核跑出来的证据见 **`EVIDENCE_ROOT.json`**（建表 DDL、写入行数、检索计划
-是否同时含全文分支与向量分支、命中的原文片段、审查历史写入记录），
+是否同时含全文分支与向量分支、命中的原文片段、审查历史写入记录、记忆读回验证），
 可用 `python seekdb_service/capture_evidence.py` 一键复现。
 
 ---
@@ -133,7 +146,10 @@ docker compose --profile seekdb up -d   # 额外起 seekdb + 知识服务
 | `seekdb_service/qoder_review.py` | 审查接入层：给每条 finding 挂上 seekdb 检索到的依据、把每轮审查写回 seekdb；内核缺失时降级并如实说明原因 |
 | `seekdb_service/capture_evidence.py` | 在真内核上跑一遍「建表 → 入库 → 审查 → 回写 → 混合检索」，产出 `EVIDENCE_ROOT.json` |
 | `seekdb_service/seekdb_selfcheck.py` | seekdb 集成自检（子进程 + 硬超时，内核异常不会拖垮主自检） |
-| `EVIDENCE_ROOT.json` | **真内核运行产出的证据**：DDL、写入行数、检索计划（全文分支 / 向量分支）、命中片段、审查历史记录 |
+| `seekdb_service/memory_store.py` | **记忆层**：优先真 seekdb 内核，始终用标准库 sqlite（`data/memory.db`）做持久镜像，保证「写入 → 读回」在任何环境下都成立 |
+| `seekdb_service/memory_selfcheck.py` | 记忆读写自检：子进程写入 → **另一个子进程读回**，证明数据可复用 |
+| `data/memory.db` | 随仓库分发的记忆库（15 条规则知识 + 审查历史），clone 后即可读回 |
+| `EVIDENCE_ROOT.json` | **真内核运行产出的证据**：DDL、写入行数、检索计划（全文分支 / 向量分支）、命中片段、审查历史记录、记忆读回验证 |
 | `rules/sql_review_rules.md` | 规则说明，编号与实现一一对应 |
 | `tests/test_rules.py` / `tests/test_app_smoke.py` | 22 + 1 个用例（规则触发/不触发 + Streamlit UI 冒烟） |
 | `PROMPT.md` | Qoder 提示词、生成物与增强点对照表、**Qoder Sites 发布步骤**、开发记录截图清单 |

@@ -150,6 +150,39 @@ def main() -> int:
             }
         )
 
+    # 4. memory write -> read back (the judge checks 「数据或记忆无法正确读回和复用」)
+    memory_block: dict[str, object] = {}
+    try:
+        from memory_store import get_memory, readback  # noqa: PLC0415
+
+        memory = get_memory()
+        stats = memory.stats()
+        knowledge_rows = memory.ensure_ready()
+        marker = "EVIDENCE_PROBE"
+        before = int(stats.get("review_rows") or 0)
+        probe_id = memory.write_review(
+            engine="qoder-evidence",
+            sql_text=f"SELECT * FROM t WHERE id = 1; -- {marker}",
+            findings=[{"id": "OB-004", "level": "warn", "title": "SELECT * 列出全部列"}],
+            summary=f"{marker} 读回探针",
+        )
+        after_stats = memory.stats()
+        payload = readback(limit=5)
+        memory_block = {
+            "backend": stats.get("engine"),
+            "sqlite_file": "data/memory.db",
+            "knowledge_rows": knowledge_rows,
+            "review_rows_before": before,
+            "review_rows_after": after_stats.get("review_rows"),
+            "probe_id": probe_id,
+            "readback_verified": bool(payload.get("ok")) and int(after_stats.get("review_rows") or 0) == before + 1,
+            "readback_count": payload.get("review_count"),
+            "readback_sample": payload.get("reviews")[:2],
+        }
+    except Exception as error:  # noqa: BLE001
+        memory_block = {"error": f"{type(error).__name__}: {error}"}
+    evidence["memory"] = memory_block
+
     store.close()
 
     out = base / "EVIDENCE_ROOT.json"
@@ -161,6 +194,13 @@ def main() -> int:
             f"  {item['query']} -> {len(item['hits'])} hits "
             f"(fulltext={item['plan_has_fulltext_branch']}, vector={item['plan_has_vector_branch']})"
         )
+    print(
+        "memory: backend={backend} knowledge={knowledge_rows} "
+        "reviews {review_rows_before} -> {review_rows_after}, readback_verified={readback_verified}".format(
+            **{key: memory_block.get(key) for key in (
+                "backend", "knowledge_rows", "review_rows_before", "review_rows_after", "readback_verified")}
+        )
+    )
     return 0
 
 

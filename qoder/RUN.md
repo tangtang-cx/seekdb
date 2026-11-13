@@ -47,13 +47,25 @@ bash start.sh --serve            # 等价：自动找 python3/python 后同上
 | `GET /` | 交互式审查界面（粘 SQL → 点「开始审查」→ 三级结果，与 Qoder Sites 页面同一套规则） |
 | `GET /health` | `{"ok": true, "rules_loaded": 15, "seekdb": {...}}` |
 | `GET /api/rules` | 15 条规则的 id / 级别 / 标题 |
-| `POST /api/review` | `{"sql": "..."}` → findings + summary；装了内核时另带 `basis`（seekdb 检索到的判定依据）、`seekdb` 状态与 `review_id`（本轮写入 seekdb 的记录 id） |
+| `GET /api/memory`（别名 `/api/reviews`） | **读回记忆**：统计 + 最近审查记录 + 规则知识命中 |
+| `POST /api/review` | `{"sql": "..."}` → findings + summary；另带 `basis`（数据库检索到的判定依据）、`seekdb` 状态与 `review_id`（本轮写入记忆的记录 id） |
 
 ```bash
 curl -s localhost:8501/health
 curl -s -X POST localhost:8501/api/review -H "Content-Type: application/json" \
   -d "{\"sql\": \"UPDATE orders SET status = 'ARCHIVED';\"}"
+curl -s localhost:8501/api/memory
 ```
+
+**读回记忆（独立命令，任何时候都能跑）**：
+
+```bash
+python run.py --readback
+# READBACK PASS (读回 N 条审查记录)
+```
+
+它读的是上一次写入的数据：真 seekdb 内核里的 `qoder_review_log`，以及始终存在的
+sqlite 镜像 `data/memory.db`（随仓库分发，clone 下来就有 15 条规则知识）。
 
 **首屏 1–2 秒内可用**：内核缺失时规则引擎照常工作（响应里会写明降级原因），
 装了 `pylibseekdb` 时首次审查会拉起内嵌内核并做检索与回写。
