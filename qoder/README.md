@@ -116,6 +116,8 @@ docker compose --profile seekdb up -d   # 额外起 seekdb + 知识服务
 | `PROMPT.md` | Qoder 提示词、生成物与增强点对照表、**Qoder Sites 发布步骤**、开发记录截图清单 |
 | `requirements.txt` / `.env.example` | 依赖声明（主流程零第三方依赖，本文件只有注释）与配置样例 |
 | `requirements-ui.txt` / `requirements-seekdb.txt` | 可选：Streamlit 界面 / 真·seekdb 检索 |
+| `index.html` | 项目网站的离线副本（与 Qoder Sites 线上版本同源，可直接静态打开或本地起静态服务预览） |
+| `verify.py` | 一句话验收脚本：规则引擎 / 自检 / `/health` / `POST /api/review` 四项，全过则退出码 0 |
 | `screenshots/` | Qoder 对话截图 + Sites 发布截图 + 运行界面（见 `PROMPT.md` §5） |
 
 在线演示：**Qoder Sites 已发布** —— <https://sql-review-assistant-8ptbxy0nhc9.qoder.zone/>（未登录可打开，页面内可直接体验 15 条规则审查）。
@@ -136,6 +138,7 @@ seekdb 检索、向量模型、大模型深审都是**可选增强**，不装也
 ```bash
 cd qoder
 python run.py          # -> SELFCHECK PASS (4/4 用例, 15 条规则)
+python verify.py       # -> VERIFY PASS (4/4 项检查)：规则引擎 / 自检 / /health / POST /api/review
 ```
 
 再起常驻服务做交互体验：
