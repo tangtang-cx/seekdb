@@ -188,34 +188,13 @@ jobs:
           call DBMS_AI_SERVICE.ALTER_AI_MODEL_ENDPOINT('diag_ollama_ep','{\"provider\":\"Ollama\"}');
           select ENDPOINT_NAME, AI_MODEL_NAME, URL, ACCESS_KEY, PROVIDER, REQUEST_MODEL_NAME, PARAMETERS, SCOPE from oceanbase.DBA_OB_AI_MODEL_ENDPOINTS where ENDPOINT_NAME='diag_ollama_ep';
           select ai_complete('diag_ollama','hello') as r2;
-          select @@session.enable_file_sql as file_sql_default;
-          set session enable_file_sql = on;
-          select @@session.enable_file_sql as file_sql_on;
           " 2>&1 | tail -25
-
-      - name: Probe the read_csv parser
-        if: always()
-        continue-on-error: true
-        shell: bash
-        run: |
-          set +e
-          MYSQL="mysql -h127.0.0.1 -P2881 -uroot --default-character-set=utf8mb4 -A"
-          probe() {
-            echo "--- $1"
-            $MYSQL -e "$2" 2>&1 | tail -3
-            echo "exit=$?"
-          }
-          printf 'id,name,score\n1,alpha,1.5\n2,beta,2.5\n' > /tmp/basic.csv
-          probe "switch off: expect ERROR 1235" "select count(*) from read_csv('/tmp/basic.csv')"
-          probe "switch on: expect ERROR 1235 for now" "set session enable_file_sql=on; select count(*) from read_csv('/tmp/basic.csv')"
-          probe "legacy 2nd positional: expect ERROR 1064" "select * from read_csv('/tmp/basic.csv', 'xml')"
-          probe "unknown named param parses: expect ERROR 1235" "select * from read_csv('/tmp/basic.csv', sample_size = 10)"
 
       - name: Run mysqltest suite
         shell: bash
         env:
-          SUITE: ${{ inputs.suite || 'ai_function' }}
-          CASES: ${{ inputs.cases || 'ai_function_enhancement ai_prompt' }}
+          SUITE: ${{ inputs.suite || 'file_sql' }}
+          CASES: ${{ inputs.cases || 'file_sql_basic' }}
         run: |
           set -euo pipefail
           arguments=(--suite "$SUITE")
