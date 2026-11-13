@@ -1,12 +1,8 @@
 FROM python:3.11-slim
 
+# 不装任何第三方包：应用默认入口 run.py 只用标准库，离线环境也能 build & run。
+# 需要完整 Streamlit 界面时再自行 `pip install -r requirements.txt`。
 WORKDIR /app
-
-# Only streamlit is required, and only for the optional Streamlit UI.
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
-
-# The whole project lives at /app (run.py sits next to app.py).
 COPY . /app
 
 ENV PYTHONUNBUFFERED=1 \
@@ -16,9 +12,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 EXPOSE 8501
 
-HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=12 \
+HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=12 \
   CMD python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8501/health')"
 
-# Zero-dependency entry: serves the interactive reviewer + /health + /api/review.
-# Use `--streamlit` (or `streamlit run app.py`) for the full Streamlit UI.
 CMD ["python", "run.py"]
