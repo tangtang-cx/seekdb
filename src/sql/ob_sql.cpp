@@ -33,6 +33,7 @@
 #include "sql/rewrite/ob_transformer_impl.h"
 #include "sql/rewrite/ob_transform_pre_process.h"
 #include "sql/code_generator/ob_code_generator.h"
+#include "sql/engine/dml/ob_ai_column_dml.h"
 #include "sql/plan_cache/ob_values_table_compression.h"
 #include "sql/pl/ob_pl_resolver.h"
 #include "lib/utility/ob_smart_call.h"
@@ -2876,6 +2877,20 @@ int ObSql::code_generate(
           codegen_mem_usage = phy_plan->get_mem_size() - last_mem_usage;
         }
       }
+    }
+  }
+
+  // Remember the AI result columns the statement refers to. The strict read
+  // check runs when the plan is executed, so the information has to travel
+  // with the plan, a plan that comes from the plan cache carries it as well.
+  if (OB_SUCC(ret) && !stmt->is_explain_stmt() && NULL != sql_ctx.schema_guard_) {
+    ObSEArray<ObAiColumnRef, 8> ai_column_refs;
+    if (OB_FAIL(collect_ai_column_refs(result.get_mem_pool(),
+                                       *sql_ctx.schema_guard_,
+                                       stmt,
+                                       ai_column_refs))) {
+      LOG_WARN("failed to collect the ai column refs", K(ret));
+    } else if (OB_FAIL(phy_plan->set_ai_column_refs(ai_column_refs))) {
     }
   }
 

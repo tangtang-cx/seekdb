@@ -94,6 +94,17 @@
 #include "sql/resolver/cmd/ob_get_diagnostics_resolver.h"
 #include "sql/resolver/dcl/ob_alter_role_resolver.h"
 #include "sql/pl/ob_pl_package.h"
+#include "sql/engine/dml/ob_ai_column_dml.h"
+#include "sql/resolver/ddl/ob_ai_column_def.h"
+#include "sql/parser/ob_sql_parser.h"
+#include "sql/ob_sql_utils.h"
+#include "share/schema/ob_schema_getter_guard.h"
+#include "share/schema/ob_schema_struct.h"
+#include "lib/atomic/ob_atomic.h"
+#include "lib/time/ob_time_utility.h"
+#include "lib/string/ob_sql_string.h"
+#include "lib/utility/ob_print_utils.h"
+#include "common/sql_mode/ob_sql_mode.h"
 
 namespace oceanbase
 {
@@ -101,6 +112,263 @@ using namespace common;
 using namespace share;
 namespace sql
 {
+
+namespace
+{
+
+// Collect the actions of an ALTER TABLE statement. The parser chains them with
+// T_LINK_NODE, a statement with a single action stores the action as it is.
+int collect_alter_actions(ParseNode *node, common::ObSEArray<ParseNode *, 8> &actions)
+{
+  int ret = OB_SUCCESS;
+  if (NULL == node) {
+    // no action at all
+  } else if (T_LINK_NODE == node->type_) {
+    if (OB_FAIL(collect_alter_actions(node->children_[0], actions))) {
+    } else if (OB_FAIL(collect_alter_actions(node->children_[1], actions))) {
+    }
+  } else if (OB_FAIL(actions.push_back(node))) {
+  }
+  return ret;
+}
+
+// Find the RETRY AI COLUMN action of an ALTER TABLE statement. The parser
+// merges the actions into one node, every action is a child of it.
+ParseNode *find_ai_column_retry_action(const ParseNode &parse_tree, int64_t &action_count)
+{
+  int ret = OB_SUCCESS;
+  ParseNode *retry_node = NULL;
+  action_count = 0;
+  ParseNode *action_list = parse_tree.children_[1];
+  common::ObSEArray<ParseNode *, 8> actions;
+  if (NULL != action_list && action_list->num_child_ > 0) {
+    for (int64_t i = 0; OB_SUCC(ret) && i < action_list->num_child_; ++i) {
+      if (OB_FAIL(collect_alter_actions(action_list->children_[i], actions))) {
+      }
+    }
+  }
+  if (OB_SUCC(ret)) {
+    action_count = actions.count();
+    for (int64_t i = 0; i < actions.count(); ++i) {
+      ParseNode *action = actions.at(i);
+      if (NULL != action
+          && T_ALTER_TABLE_OPTION == action->type_
+          && action->num_child_ > 0
+          && NULL != action->children_[0]
+          && T_AI_COLUMN_RETRY == action->children_[0]->type_) {
+        retry_node = action->children_[0];
+        break;
+      }
+    }
+  }
+  return retry_node;
+}
+
+inline bool is_ident_start_char(char c)
+{
+  return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || '_' == c || '$' == c;
+}
+
+inline bool is_ident_char(char c)
+{
+  return is_ident_start_char(c) || ('0' <= c && c <= '9');
+}
+
+// Copy a quoted literal or a quoted identifier as it is.
+int copy_quoted_text(common::ObSqlString &buf,
+                      const char *sql,
+                      const int64_t len,
+                      int64_t &i,
+                      const char quote)
+{
+  int ret = OB_SUCCESS;
+  if (OB_FAIL(buf.append_fmt("%c", quote))) {
+  } else {
+    ++i;
+    while (i < len) {
+      const char c = sql[i];
+      if ('\\' == c && '\'' == quote && i + 1 < len) {
+        if (OB_FAIL(buf.append_fmt("%c%c", c, sql[i + 1]))) {
+          break;
+        }
+        i += 2;
+      } else if (c == quote) {
+        if (i + 1 < len && sql[i + 1] == quote) {
+          if (OB_FAIL(buf.append_fmt("%c%c", c, sql[i + 1]))) {
+            break;
+          }
+          i += 2;
+        } else {
+          if (OB_FAIL(buf.append_fmt("%c", c))) {
+            break;
+          }
+          ++i;
+          break;
+        }
+      } else {
+        if (OB_FAIL(buf.append_fmt("%c", c))) {
+          break;
+        }
+        ++i;
+      }
+    }
+  }
+  return ret;
+}
+
+// Rewrite the STATUS pseudo column of a retry predicate into the state column
+// of the AI column. Only the bare identifier is the pseudo column, a backquoted
+// one addresses the physical column of the table.
+int rewrite_status_pseudo_column(common::ObIAllocator &alloc,
+                                  const common::ObString &predicate,
+                                  const common::ObString &state_column_name,
+                                  common::ObString &rewritten)
+{
+  int ret = OB_SUCCESS;
+  common::ObSqlString buf;
+  const char *sql = predicate.ptr();
+  const int64_t len = predicate.length();
+  int64_t i = 0;
+  while (i < len && OB_SUCC(ret)) {
+    const char c = sql[i];
+    if ('\'' == c || '"' == c || '`' == c) {
+      ret = copy_quoted_text(buf, sql, len, i, c);
+    } else if ('-' == c && i + 1 < len && '-' == sql[i + 1]) {
+      // a line comment
+      while (i < len && '\n' != sql[i]) {
+        if (OB_FAIL(buf.append_fmt("%c", sql[i]))) {
+          break;
+        }
+        ++i;
+      }
+    } else if ('#' == c) {
+      while (i < len && '\n' != sql[i]) {
+        if (OB_FAIL(buf.append_fmt("%c", sql[i]))) {
+          break;
+        }
+        ++i;
+      }
+    } else if ('/' == c && i + 1 < len && '*' == sql[i + 1]) {
+      // a block comment
+      while (i < len) {
+        if ('*' == sql[i] && i + 1 < len && '/' == sql[i + 1]) {
+          if (OB_FAIL(buf.append_fmt("*/"))) {
+            break;
+          }
+          i += 2;
+          break;
+        }
+        if (OB_FAIL(buf.append_fmt("%c", sql[i]))) {
+          break;
+        }
+        ++i;
+      }
+    } else if (is_ident_start_char(c)) {
+      int64_t j = i;
+      while (j < len && is_ident_char(sql[j])) {
+        ++j;
+      }
+      const common::ObString word(j - i, sql + i);
+      int64_t k = j;
+      while (k < len && (' ' == sql[k] || '\t' == sql[k])) {
+        ++k;
+      }
+      const bool is_function_call = (k < len && '(' == sql[k]);
+      if (!is_function_call
+          && 6 == word.length()
+          && 0 == STRNCASECMP(word.ptr(), "status", 6)) {
+        if (OB_FAIL(buf.append_fmt("`%.*s`",
+                                   state_column_name.length(),
+                                   state_column_name.ptr()))) {
+          break;
+        }
+      } else if (OB_FAIL(buf.append_fmt("%.*s", word.length(), word.ptr()))) {
+        break;
+      }
+      i = j;
+    } else {
+      if (OB_FAIL(buf.append_fmt("%c", c))) {
+        break;
+      }
+      ++i;
+    }
+  }
+  if (OB_SUCC(ret)) {
+    if (OB_FAIL(common::ob_write_string(alloc, buf.string(), rewritten))) {
+    }
+  }
+  return ret;
+}
+
+// The database and the table of the relation factor of an ALTER TABLE.
+int extract_relation_names(ObSQLSessionInfo *session_info,
+                           ParseNode *relation_node,
+                           common::ObString &db_name,
+                           common::ObString &table_name)
+{
+  int ret = OB_SUCCESS;
+  if (OB_ISNULL(relation_node) || relation_node->num_child_ < 2) {
+    ret = OB_ERR_UNEXPECTED;
+  } else {
+    ParseNode *db_node = relation_node->children_[0];
+    ParseNode *rel_node = relation_node->children_[1];
+    table_name.assign_ptr(const_cast<char *>(rel_node->str_value_), rel_node->str_len_);
+    if (NULL == db_node) {
+      if (OB_ISNULL(session_info)) {
+        ret = OB_ERR_UNEXPECTED;
+      } else {
+        db_name = session_info->get_database_name();
+        if (db_name.empty()) {
+          ret = OB_ERR_NO_DB_SELECTED;
+        }
+      }
+    } else {
+      db_name.assign_ptr(const_cast<char *>(db_node->str_value_), db_node->str_len_);
+    }
+  }
+  if (OB_SUCC(ret) && !db_name.empty() && !table_name.empty()) {
+    ObNameCaseMode mode = OB_NAME_CASE_INVALID;
+    ObCollationType cs_type = CS_TYPE_INVALID;
+    if (OB_FAIL(session_info->get_name_case_mode(mode))) {
+    } else if (OB_FAIL(session_info->get_collation_connection(cs_type))) {
+    } else {
+      const bool preserve_lettercase = (mode != OB_LOWERCASE_AND_INSENSITIVE);
+      ObSQLUtils::check_and_convert_table_name(cs_type, preserve_lettercase, table_name);
+      ObSQLUtils::check_and_convert_db_name(cs_type, preserve_lettercase, db_name);
+    }
+  }
+  return ret;
+}
+
+// The name of a bookkeeping column of an AI column.
+int build_ai_column_name(common::ObIAllocator &alloc,
+                          const common::ObString &ai_column_name,
+                          const char *suffix,
+                          common::ObString &name)
+{
+  int ret = OB_SUCCESS;
+  common::ObSqlString buf;
+  if (OB_FAIL(buf.append_fmt("%s%.*s%s",
+                             AI_COLUMN_HIDDEN_PREFIX,
+                             ai_column_name.length(),
+                             ai_column_name.ptr(),
+                             suffix))) {
+  } else if (OB_FAIL(common::ob_write_string(alloc, buf.string(), name))) {
+  }
+  return ret;
+}
+
+// A unique value that marks the update of a retry statement.
+void make_retry_marker(char *buf, const int64_t buf_len)
+{
+  static uint64_t seq = 0;
+  const uint64_t id = ATOMIC_AAF(&seq, 1);
+  snprintf(buf, static_cast<size_t>(buf_len), "%lx_%lx",
+           static_cast<uint64_t>(ObTimeUtility::current_time()), id);
+}
+
+} // anonymous namespace
+
 ObResolver::ObResolver(ObResolverParams &params)
     : params_(params)
 {
@@ -181,7 +449,13 @@ int ObResolver::resolve(IsPrepared if_prepared, const ParseNode &parse_tree, ObS
         break;
       }
       case T_ALTER_TABLE: {
-        REGISTER_STMT_RESOLVER(AlterTable);
+        int64_t action_count = 0;
+        ParseNode *retry_node = find_ai_column_retry_action(parse_tree, action_count);
+        if (NULL != retry_node) {
+          ret = resolve_ai_column_retry(parse_tree, stmt);
+        } else {
+          REGISTER_STMT_RESOLVER(AlterTable);
+        }
         break;
       }
       case T_CREATE_INDEX: {
@@ -679,6 +953,157 @@ int ObResolver::resolve(IsPrepared if_prepared, const ParseNode &parse_tree, ObS
       }
     }
   }  // end if
+  return ret;
+}
+
+int ObResolver::resolve_ai_column_retry(const ParseNode &parse_tree, ObStmt *&stmt)
+{
+  int ret = OB_SUCCESS;
+  int64_t action_count = 0;
+  ParseNode *retry_node = find_ai_column_retry_action(parse_tree, action_count);
+  if (NULL == retry_node) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("the retry action of the alter table is not found", K(ret));
+  } else if (action_count != 1) {
+    // the retry must be the only action of the statement
+    ret = OB_NOT_SUPPORTED;
+    LOG_USER_ERROR(OB_NOT_SUPPORTED, "combining AI COLUMN RETRY with another ALTER action");
+  } else {
+    ret = resolve_ai_column_retry_update(parse_tree, *retry_node, stmt);
+  }
+  return ret;
+}
+
+int ObResolver::resolve_ai_column_retry_update(const ParseNode &parse_tree,
+                                               const ParseNode &retry_node,
+                                               ObStmt *&stmt)
+{
+  int ret = OB_SUCCESS;
+  ObSQLSessionInfo *session = params_.session_info_;
+  ParseNode *column_node = retry_node.children_[0];
+  ParseNode *where_node = (retry_node.num_child_ > 1) ? retry_node.children_[1] : NULL;
+  common::ObString column_name;
+  common::ObString db_name;
+  common::ObString table_name;
+  common::ObString ai_column_name;
+  common::ObString state_name;
+  common::ObString request_name;
+  common::ObString predicate;
+  common::ObSqlString update_sql;
+  const share::schema::ObTableSchema *table_schema = NULL;
+  const share::schema::ObDatabaseSchema *db_schema = NULL;
+  ObSchemaGetterGuard *schema_guard = NULL;
+  ObSQLMode sql_mode;
+
+  if (OB_ISNULL(column_node)) {
+    ret = OB_ERR_UNEXPECTED;
+  } else {
+    column_name.assign_ptr(const_cast<char *>(column_node->str_value_), column_node->str_len_);
+  }
+  // the table the retry applies to
+  if (OB_SUCC(ret)
+      && OB_FAIL(extract_relation_names(session, parse_tree.children_[0], db_name, table_name))) {
+    LOG_WARN("failed to get the table of the retry", K(ret), K(db_name), K(table_name));
+  }
+  // the column must be an AI column of that table
+  if (OB_SUCC(ret)) {
+    if (OB_ISNULL(schema_guard = params_.schema_checker_->get_schema_guard())) {
+      ret = OB_ERR_UNEXPECTED;
+    } else if (OB_FAIL(params_.schema_checker_->get_table_schema(db_name,
+                                                                  table_name,
+                                                                  false/*not index table*/,
+                                                                  table_schema))) {
+      ObCStringHelper helper;
+      LOG_USER_ERROR(OB_TABLE_NOT_EXIST, helper.convert(db_name), helper.convert(table_name));
+    } else if (OB_ISNULL(table_schema)) {
+      ret = OB_TABLE_NOT_EXIST;
+      ObCStringHelper helper;
+      LOG_USER_ERROR(OB_TABLE_NOT_EXIST, helper.convert(db_name), helper.convert(table_name));
+    } else if (OB_FAIL(find_ai_column_name(*params_.allocator_,
+                                           *table_schema,
+                                           column_name,
+                                           ai_column_name))) {
+    } else if (ai_column_name.empty()) {
+      ret = OB_NOT_SUPPORTED;
+      LOG_USER_ERROR(OB_NOT_SUPPORTED, "retrying a column that is not an AI column");
+    }
+  }
+  // the bookkeeping columns of the AI column
+  if (OB_SUCC(ret)) {
+    if (OB_FAIL(build_ai_column_name(*params_.allocator_, ai_column_name,
+                                     AI_COLUMN_STATE_SUFFIX, state_name))) {
+    } else if (OB_FAIL(build_ai_column_name(*params_.allocator_, ai_column_name,
+                                             AI_COLUMN_REQUEST_SUFFIX, request_name))) {
+    } else if (OB_FAIL(schema_guard->get_database_schema(table_schema->get_database_id(),
+                                                          db_schema))) {
+      LOG_WARN("failed to get the database schema", K(ret));
+    } else if (OB_ISNULL(db_schema)) {
+      ret = OB_ERR_UNEXPECTED;
+    }
+  }
+  // the predicate of the retry, the STATUS pseudo column becomes the state
+  // column of the AI column
+  if (OB_SUCC(ret)
+      && NULL != where_node
+      && where_node->str_len_ > 0
+      && NULL != where_node->str_value_) {
+    const common::ObString raw_predicate(where_node->str_len_, where_node->str_value_);
+    if (OB_FAIL(rewrite_status_pseudo_column(*params_.allocator_,
+                                              raw_predicate,
+                                              state_name,
+                                              predicate))) {
+      LOG_WARN("failed to rewrite the status pseudo column", K(ret));
+    }
+  }
+  // the update that marks the matching rows as pending
+  if (OB_SUCC(ret)) {
+    char marker[64];
+    make_retry_marker(marker, sizeof(marker));
+    const common::ObString &real_db_name = db_schema->get_database_name_str();
+    const common::ObString &real_table_name = table_schema->get_table_name_str();
+    if (OB_FAIL(update_sql.append_fmt("UPDATE `%.*s`.`%.*s` SET `%.*s` = '%s'",
+                                       real_db_name.length(), real_db_name.ptr(),
+                                       real_table_name.length(), real_table_name.ptr(),
+                                       request_name.length(), request_name.ptr(),
+                                       marker))) {
+    } else if (!predicate.empty()
+               && OB_FAIL(update_sql.append_fmt(" WHERE %.*s",
+                                                predicate.length(), predicate.ptr()))) {
+    }
+  }
+  // resolve the update, the state column is hidden so the statement has to be
+  // resolved with an inner session
+  if (OB_SUCC(ret)) {
+    ParseResult parse_result;
+    MEMSET(&parse_result, 0, SIZEOF(ParseResult));
+    parse_result.malloc_pool_ = params_.allocator_;
+    {
+      sql_mode = session->get_sql_mode();
+      ObSQLParser parser(*params_.allocator_, sql_mode);
+      if (OB_FAIL(parser.parse(update_sql.ptr(), update_sql.length(), parse_result))) {
+        LOG_WARN("failed to parse the retry statement", K(ret), "sql", update_sql.ptr());
+      } else if (OB_ISNULL(parse_result.result_tree_)
+                 || T_STMT_LIST != parse_result.result_tree_->type_
+                 || parse_result.result_tree_->num_child_ < 1
+                 || OB_ISNULL(parse_result.result_tree_->children_[0])) {
+        ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("unexpected parse tree of the retry statement", K(ret));
+      } else {
+        const ParseNode *update_node = parse_result.result_tree_->children_[0];
+        const bool was_inner = session->is_inner();
+        const ObSQLSessionInfo::SessionType saved_type = session->get_session_type();
+        session->set_inner_session();
+        ret = stmt_resolver_func<ObUpdateResolver>(params_, *update_node, stmt);
+        if (was_inner) {
+          session->set_inner_session();
+        } else {
+          session->set_user_session();
+        }
+        session->set_session_type(saved_type);
+      }
+    }
+    parse_terminate(&parse_result);
+  }
   return ret;
 }
 

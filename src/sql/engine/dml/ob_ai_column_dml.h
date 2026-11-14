@@ -17,15 +17,22 @@
 #pragma once
 
 #include "lib/string/ob_string.h"
+#include "lib/utility/utility.h"
+#include <stdio.h>
 #include "sql/engine/dml/ob_dml_ctx_define.h"
 
 namespace oceanbase
 {
+namespace common
+{
+class ObMySQLProxy;
+}
 namespace share
 {
 namespace schema
 {
 class ObTableSchema;
+class ObSchemaGetterGuard;
 }
 }
 }
@@ -36,9 +43,51 @@ namespace sql
 {
 
 class ObTableModifyOp;
+class ObDMLStmt;
+class ObSQLSessionInfo;
+
+// One AI result column a statement refers to. The table id is the physical
+// table id, the column id is the id of the user visible result column.
+struct ObAiColumnRef
+{
+  ObAiColumnRef() : table_id_(OB_INVALID_ID), column_id_(OB_INVALID_ID) {}
+  ObAiColumnRef(uint64_t table_id, uint64_t column_id)
+    : table_id_(table_id), column_id_(column_id) {}
+  int64_t to_string(char *buf, const int64_t buf_len) const
+  {
+    return snprintf(buf, buf_len, "{table_id: %lu, column_id: %lu}",
+                    static_cast<unsigned long>(table_id_),
+                    static_cast<unsigned long>(column_id_));
+  }
+  uint64_t table_id_;
+  uint64_t column_id_;
+};
 
 // True when the table carries at least one AI column bookkeeping column.
 bool table_has_ai_column(const share::schema::ObTableSchema &table_schema);
+
+// Find the canonical name of the AI column the given column belongs to. The
+// name stays empty when the column is not an AI column.
+int find_ai_column_name(common::ObIAllocator &alloc,
+                         const share::schema::ObTableSchema &table_schema,
+                         const common::ObString &column_name,
+                         common::ObString &ai_column_name);
+
+// Collect every AI result column the statement refers to, including the ones
+// used by its sub queries. Only the columns the statement really mentions are
+// reported, the strict read check must not touch the other AI columns.
+int collect_ai_column_refs(common::ObIAllocator &alloc,
+                            share::schema::ObSchemaGetterGuard &schema_guard,
+                            ObDMLStmt *stmt,
+                            common::ObIArray<ObAiColumnRef> &refs);
+
+// ai_column_strict_read: refuse the statement when one of the AI columns it
+// refers to still owns rows that are not READY. The check is column wide, it
+// does not only look at the rows the statement selects.
+int check_ai_column_strict_read(ObSQLSessionInfo *session,
+                                 common::ObMySQLProxy *sql_proxy,
+                                 share::schema::ObSchemaGetterGuard &schema_guard,
+                                 const common::ObIArray<ObAiColumnRef> &refs);
 
 // Row level maintenance of AI columns.
 //

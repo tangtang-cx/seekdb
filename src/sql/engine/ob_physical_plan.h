@@ -33,6 +33,7 @@
 #include "sql/monitor/ob_phy_operator_stats.h"
 #include "sql/monitor/ob_plan_info_manager.h"
 #include "sql/engine/ob_subschema_ctx.h"
+#include "sql/engine/dml/ob_ai_column_dml.h"
 
 namespace oceanbase
 {
@@ -236,6 +237,10 @@ public:
 
   inline const share::schema::ObStmtNeedPrivs &get_stmt_need_privs() const { return stmt_need_privs_; }
   int set_stmt_need_privs(const share::schema::ObStmtNeedPrivs& stmt_need_privs);
+  // The AI result columns this statement refers to. The strict read check
+  // refuses the statement when one of them still owns unfinished rows.
+  inline const common::ObIArray<ObAiColumnRef> &get_ai_column_refs() const { return ai_column_refs_; }
+  int set_ai_column_refs(const common::ObIArray<ObAiColumnRef> &ai_column_refs);
   inline int16_t get_regexp_op_count() const { return regexp_op_count_; }
   inline void set_regexp_op_count(int16_t regexp_op_count) { regexp_op_count_ = regexp_op_count; }
   inline int16_t get_like_op_count() const { return like_op_count_; }
@@ -413,6 +418,8 @@ private:
   share::ObTabletAutoincParam tablet_autoinc_param_;
   // for privilege check
   share::schema::ObStmtNeedPrivs stmt_need_privs_;
+  // the AI result columns the statement refers to
+  common::ObFixedArray<ObAiColumnRef, common::ObIAllocator> ai_column_refs_;
   // Involved system variables and user variables
   common::ObFixedArray<ObVarInfo, common::ObIAllocator> vars_;
   ObSqlExpressionFactory sql_expression_factory_;

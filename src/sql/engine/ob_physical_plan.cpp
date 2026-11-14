@@ -42,6 +42,7 @@ ObPhysicalPlan::ObPhysicalPlan(MemoryContext &mem_context /* = CURRENT_CONTEXT *
     param_columns_(mem_context->get_arena_allocator()),
     autoinc_params_(allocator_),
     stmt_need_privs_(allocator_),
+    ai_column_refs_(allocator_),
     vars_(allocator_),
     sql_expression_factory_(allocator_),
     expr_op_factory_(allocator_),
@@ -131,6 +132,7 @@ void ObPhysicalPlan::reset()
   param_columns_.reset();
   autoinc_params_.reset();
   stmt_need_privs_.reset();
+  ai_column_refs_.reset();
   vars_.reset();
   sql_expression_factory_.destroy();
   expr_op_factory_.destroy();
@@ -319,6 +321,15 @@ int ObPhysicalPlan::set_stmt_need_privs(const ObStmtNeedPrivs& stmt_need_privs)
   int ret = OB_SUCCESS;
   stmt_need_privs_.reset();
   if (OB_FAIL(stmt_need_privs_.deep_copy(stmt_need_privs, allocator_))) {
+  }
+  return ret;
+}
+
+int ObPhysicalPlan::set_ai_column_refs(const common::ObIArray<ObAiColumnRef> &ai_column_refs)
+{
+  int ret = OB_SUCCESS;
+  ai_column_refs_.reset();
+  if (OB_FAIL(ai_column_refs_.assign(ai_column_refs))) {
   }
   return ret;
 }

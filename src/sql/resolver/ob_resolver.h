@@ -47,6 +47,14 @@ private:
 
   template <typename SelectResolverType>
   int select_stmt_resolver_func(ObResolverParams &params, const ParseNode &parse_tree, ObStmt *&stmt);
+
+  // ALTER TABLE ... RETRY AI COLUMN <col> [WHERE <predicate>] is turned into an
+  // update of the bookkeeping columns of the AI column, the AI helper of the
+  // DML layer turns the updated rows into the pending tasks of the worker.
+  int resolve_ai_column_retry(const ParseNode &parse_tree, ObStmt *&stmt);
+  int resolve_ai_column_retry_update(const ParseNode &parse_tree,
+                                     const ParseNode &retry_node,
+                                     ObStmt *&stmt);
 private:
   // data members
   ObResolverParams params_;

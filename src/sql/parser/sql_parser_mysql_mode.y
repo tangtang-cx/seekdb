@@ -337,7 +337,7 @@ END_P SET_VAR DELIMITER
         QUANTIFIER_TABLE QUARTER QUERY QUEUE_TIME QUICK
 
         RECOVER REDUNDANT REFRESH RELAY RELAYLOG RELAY_LOG_FILE RELAY_LOG_POS RELAY_THREAD RELOAD REMOVE
-        REPEATABLE RESET RESPECT RESTART RESTORE RESUME RETURNED_SQLSTATE RETURNS RETURNING REVERSE
+        REPEATABLE RESET RESPECT RESTART RESTORE RESUME RETRY RETURNED_SQLSTATE RETURNS RETURNING REVERSE
         REWRITE ROLLBACK ROLLUP ROUTINE ROW ROWID ROW_COUNT ROW_FORMAT ROWS RTREE
         RUN RECYCLEBIN REPLICATION ROTATE ROW_NUMBER RUDUNDANT RECURSIVE RANDOM REDO_TRANSPORT_OPTIONS
         RANK READ_ONLY RECOVERY REJECT ROLE
@@ -503,6 +503,7 @@ END_P SET_VAR DELIMITER
 %type <node> skip_index_type opt_skip_index_type_list
 %type <node> vec_index_params vec_index_param vec_index_param_value opt_with_vector_index_parameters
 %type <node> opt_ai_column_options ai_column_option_list ai_column_option ai_column_option_value
+%type <node> opt_ai_column_retry_where
 %type <node> json_table_expr unnest_expr mock_jt_on_error_on_empty jt_column_list json_table_column_def
 %type <node> file_table_expr file_table_option_list file_table_option file_table_func
 %type <node> json_table_ordinality_column_def json_table_exists_column_def json_table_value_column_def json_table_nested_column_def
@@ -14825,6 +14826,31 @@ DROP CONSTRAINT constraint_name
   (void)($2);
   (void)($3);
   $$ = NULL;
+}
+| RETRY AI COLUMN column_name opt_ai_column_retry_where
+{
+  /* ALTER TABLE t RETRY AI COLUMN c [WHERE <predicate>] puts the matching rows of the
+   * AI column back into the pending state, so that the background worker derives them
+   * again.  The optional predicate is captured as plain text, the resolver rewrites the
+   * STATUS pseudo column into the state column of the AI column. */
+  ParseNode *retry_node = NULL;
+  (void)($1);
+  (void)($2);
+  (void)($3);
+  malloc_non_terminal_node(retry_node, result->malloc_pool_, T_AI_COLUMN_RETRY, 2, $4, $5);
+  malloc_non_terminal_node($$, result->malloc_pool_, T_ALTER_TABLE_OPTION, 1, retry_node);
+}
+;
+
+opt_ai_column_retry_where:
+/*empty*/
+{
+  $$ = NULL;
+}
+| WHERE expr
+{
+  dup_expr_string($2, result, @2.first_column, @2.last_column);
+  $$ = $2;
 }
 ;
 

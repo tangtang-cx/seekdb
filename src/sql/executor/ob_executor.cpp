@@ -17,8 +17,42 @@
 #define USING_LOG_PREFIX SQL_EXE
 
 #include "ob_executor.h"
+#include "sql/engine/dml/ob_ai_column_dml.h"
+#include "share/schema/ob_schema_getter_guard.h"
 using namespace oceanbase::common;
 using namespace oceanbase::sql;
+
+namespace oceanbase
+{
+namespace sql
+{
+namespace
+{
+// ai_column_strict_read: the statement must not read an AI column that still
+// owns unfinished rows. The check runs before the plan produces any row, so a
+// refused write leaves the table unchanged.
+int check_ai_column_strict_read(ObExecContext &ctx, ObPhysicalPlan *phy_plan)
+{
+  int ret = OB_SUCCESS;
+  const common::ObIArray<ObAiColumnRef> &refs = phy_plan->get_ai_column_refs();
+  if (0 == refs.count()) {
+    return OB_SUCCESS;
+  }
+  ObSQLSessionInfo *session = ctx.get_my_session();
+  ObSqlCtx *sql_ctx = ctx.get_sql_ctx();
+  if (OB_ISNULL(session) || OB_ISNULL(sql_ctx) || OB_ISNULL(sql_ctx->schema_guard_)) {
+    return OB_SUCCESS;
+  }
+  if (OB_FAIL(sql::check_ai_column_strict_read(session,
+                                               ctx.get_sql_proxy(),
+                                               *sql_ctx->schema_guard_,
+                                               refs))) {
+  }
+  return ret;
+}
+} // namespace
+} // namespace sql
+} // namespace oceanbase
 
 int ObExecutor::init(ObPhysicalPlan *plan)
 {
@@ -61,6 +95,7 @@ int ObExecutor::execute_plan(ObExecContext &ctx)
     ret = OB_NOT_INIT;
   } else if (OB_ISNULL(phy_plan_)) {
     ret = OB_NOT_INIT;
+  } else if (OB_FAIL(check_ai_column_strict_read(ctx, phy_plan_))) {
   } else if (OB_FAIL(session_info->set_cur_phy_plan(phy_plan_))) {
   } else if (OB_FAIL(phy_plan_->get_expr_frame_info()
                                  .pre_alloc_exec_memory(ctx))) {

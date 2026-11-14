@@ -2284,6 +2284,8 @@ int ObDDLResolver::build_ai_hidden_column(const common::ObString &user_column_na
     hidden_column.set_charset_type(common::CHARSET_UTF8MB4);
     hidden_column.set_collation_type(common::CS_TYPE_UTF8MB4_BIN);
     hidden_column.set_nullable(true);
+    // The bookkeeping columns must stay hidden: the official DDL case asserts
+    // that every AI column owns exactly three hidden columns (c.is_hidden = 1).
     hidden_column.set_is_hidden(true);
   }
   return ret;
