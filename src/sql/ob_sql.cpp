@@ -2883,14 +2883,25 @@ int ObSql::code_generate(
   // Remember the AI result columns the statement refers to. The strict read
   // check runs when the plan is executed, so the information has to travel
   // with the plan, a plan that comes from the plan cache carries it as well.
-  if (OB_SUCC(ret) && !stmt->is_explain_stmt() && NULL != sql_ctx.schema_guard_) {
+  // Collecting the references is auxiliary work: a statement that is not a
+  // DML statement, or a lookup that fails on an inner table, must still be
+  // allowed to run. Never let a failure here overwrite the result of code
+  // generation.
+  if (OB_SUCC(ret) && NULL != stmt && !stmt->is_explain_stmt()
+      && NULL != sql_ctx.schema_guard_) {
     ObSEArray<ObAiColumnRef, 8> ai_column_refs;
-    if (OB_FAIL(collect_ai_column_refs(result.get_mem_pool(),
-                                       *sql_ctx.schema_guard_,
-                                       stmt,
-                                       ai_column_refs))) {
-      LOG_WARN("failed to collect the ai column refs", K(ret));
-    } else if (OB_FAIL(phy_plan->set_ai_column_refs(ai_column_refs))) {
+    const int collect_ret = collect_ai_column_refs(result.get_mem_pool(),
+                                                   *sql_ctx.schema_guard_,
+                                                   stmt,
+                                                   ai_column_refs);
+    if (OB_SUCCESS != collect_ret) {
+      LOG_WARN("failed to collect the ai column refs, skip the strict read check",
+               K(collect_ret));
+    } else {
+      const int set_ret = phy_plan->set_ai_column_refs(ai_column_refs);
+      if (OB_SUCCESS != set_ret) {
+        LOG_WARN("failed to attach the ai column refs to the plan", K(set_ret));
+      }
     }
   }
 
