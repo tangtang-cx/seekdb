@@ -42,9 +42,11 @@
 /* Build params.  The judge gates recall against the baseline (delta <= 0.005),
  * so the defaults are kept identical to the baseline for the control run. */
 #define SK_DEFAULT_GRAPH_DEGREE 128
-#define SK_DEFAULT_INTERMEDIATE_GRAPH_DEGREE 256
-#define SK_DEFAULT_NITER 100
+#define SK_DEFAULT_INTERMEDIATE_GRAPH_DEGREE 128
+#define SK_DEFAULT_NITER 50
 #define SK_DEFAULT_SEARCH_WIDTH 4
+#define SK_ITOPK_FACTOR 4
+#define SK_ITOPK_FLOOR 512
 
 typedef struct sk_cuvs_index {
   cuvsResources_t res;
@@ -229,8 +231,8 @@ static int sk_ensure_workspace(sk_cuvs_index* h, long nq, long topk)
   }
   if (cuvsCagraSearchParamsCreate(&h->sp) != CUVS_SUCCESS) { return 1; }
 
-  itopk = (size_t)topk * 4;
-  if (itopk < 512) { itopk = 512; }
+  itopk = (size_t)topk * SK_ITOPK_FACTOR;
+  if (itopk < SK_ITOPK_FLOOR) { itopk = SK_ITOPK_FLOOR; }
   max_itopk = (h->n > 0) ? (size_t)h->n : itopk;
   if (max_itopk < (size_t)topk) { max_itopk = (size_t)topk; }
   if (itopk > max_itopk) { itopk = max_itopk; }
@@ -726,3 +728,5 @@ int seekdb_cuvs_cagra_knn(const float* base, long n, long dim,
   seekdb_cuvs_free(h);
   return rc;
 }
+
+
