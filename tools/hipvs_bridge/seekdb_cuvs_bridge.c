@@ -657,12 +657,15 @@ static void* sk_build_inner(const float* base, long n, long dim)
             degree, inter, niter);
     (void)cuvsCagraIndexDestroy(h->idx);
     h->idx = NULL;
+    /* Mark the conservative tier before rebuilding it, so that the probe of the
+     * conservative index runs with exactly the search budget the queries will
+     * use. */
+    h->safe_tier = 1;
     if (!sk_build_tier(h, base, n, dim, safe_degree, safe_inter, safe_niter)) { goto fail_ip; }
     if (!sk_probe_index(h, n, dim)) {
       fprintf(stderr, "[seekdb_cuvs] conservative tier unusable as well\n");
       goto fail_idx;
     }
-    h->safe_tier = 1;
     degree = safe_degree;
     inter = safe_inter;
     niter = safe_niter;
