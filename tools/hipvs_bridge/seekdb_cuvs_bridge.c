@@ -59,7 +59,7 @@
 #define SK_LOW_DIM_GRAPH_DEGREE 32
 #define SK_LOW_DIM_INTERMEDIATE_DEGREE 64
 #define SK_LOW_DIM_NITER 3
-#define SK_HIGH_DIM_GRAPH_DEGREE 64
+#define SK_HIGH_DIM_GRAPH_DEGREE 112
 /* The intermediate (candidate) graph only needs to stay above graph_degree:
  * pushing it past 128 just computes more distances without improving the final
  * graph, and a sparser candidate graph actually converges *better* at a fixed
@@ -72,7 +72,7 @@
  * little graph quality, and a wider beam buys that recall back at a few percent
  * of extra query latency, which keeps the recall gate safe without spending the
  * whole query-side margin. */
-#define SK_ITOPK_FLOOR 512
+#define SK_ITOPK_FLOOR 1024
 
 typedef struct sk_cuvs_index {
   cuvsResources_t res;
