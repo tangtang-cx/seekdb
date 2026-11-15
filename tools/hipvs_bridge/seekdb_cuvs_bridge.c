@@ -110,15 +110,22 @@ typedef struct sk_cuvs_index {
   int quit;
   int busy;
   pthread_t worker;
-  struct {
-    const float* query;
-    long nq;
-    long topk;
-    unsigned* out_ids;
-    float* out_dist;
-    int rc;
-  } job;
+  /* Completion handshake: every request carries its own done/rc pair, so a
+   * request can never be woken by (or read) another request's result. */
+  struct sk_cuvs_request* job;
 } sk_cuvs_index;
+
+/* One in-flight search request.  Lives on the caller's stack; the worker
+ * publishes the result into it before releasing the job slot. */
+struct sk_cuvs_request {
+  const float* query;
+  long nq;
+  long topk;
+  unsigned* out_ids;
+  float* out_dist;
+  int done;
+  int rc;
+};
 
 static const char* sk_err(void)
 {
@@ -349,10 +356,7 @@ static void* sk_worker_main(void* arg)
 {
   sk_cuvs_index* h = (sk_cuvs_index*)arg;
   for (;;) {
-    const float* query;
-    long nq, topk;
-    unsigned* out_ids;
-    float* out_dist;
+    struct sk_cuvs_request* req;
     int rc;
 
     pthread_mutex_lock(&h->q_mu);
@@ -361,19 +365,17 @@ static void* sk_worker_main(void* arg)
       pthread_mutex_unlock(&h->q_mu);
       break;
     }
-    query = h->job.query;
-    nq = h->job.nq;
-    topk = h->job.topk;
-    out_ids = h->job.out_ids;
-    out_dist = h->job.out_dist;
+    req = h->job;
     pthread_mutex_unlock(&h->q_mu);
 
     pthread_mutex_lock(&h->exec_mu);
-    rc = sk_search_impl(h, query, nq, topk, out_ids, out_dist);
+    rc = sk_search_impl(h, req->query, req->nq, req->topk, req->out_ids, req->out_dist);
     pthread_mutex_unlock(&h->exec_mu);
 
     pthread_mutex_lock(&h->q_mu);
-    h->job.rc = rc;
+    /* Publish the result for exactly this request, then release the slot. */
+    req->rc = rc;
+    req->done = 1;
     h->busy = 0;
     pthread_cond_broadcast(&h->q_done_cv);
     pthread_mutex_unlock(&h->q_mu);
@@ -400,23 +402,31 @@ static int sk_start_worker(sk_cuvs_index* h)
 static int sk_submit_search(sk_cuvs_index* h, const float* query, long nq, long topk,
                             unsigned* out_ids, float* out_dist)
 {
-  int rc;
+  struct sk_cuvs_request req;
+  int rc = -1;
   pthread_mutex_lock(&h->q_mu);
+  /* Wait for the single job slot to become free, then claim it.  Each request
+   * carries its own done flag, so concurrent callers can never be woken by (or
+   * read) another caller's result: with a plain shared "busy" flag two callers
+   * could both observe busy == 0 and return the other caller's result without
+   * their own search ever running. */
   while (h->busy && !h->quit) { pthread_cond_wait(&h->q_done_cv, &h->q_mu); }
   if (h->quit) {
     pthread_mutex_unlock(&h->q_mu);
     return 9;
   }
-  h->job.query = query;
-  h->job.nq = nq;
-  h->job.topk = topk;
-  h->job.out_ids = out_ids;
-  h->job.out_dist = out_dist;
-  h->job.rc = 0;
+  req.query = query;
+  req.nq = nq;
+  req.topk = topk;
+  req.out_ids = out_ids;
+  req.out_dist = out_dist;
+  req.done = 0;
+  req.rc = -1;
+  h->job = &req;
   h->busy = 1;
   pthread_cond_signal(&h->q_work_cv);
-  while (h->busy && !h->quit) { pthread_cond_wait(&h->q_done_cv, &h->q_mu); }
-  rc = h->quit ? 9 : h->job.rc;
+  while (!req.done && !h->quit) { pthread_cond_wait(&h->q_done_cv, &h->q_mu); }
+  rc = req.done ? req.rc : 9;
   pthread_mutex_unlock(&h->q_mu);
   return rc;
 }
