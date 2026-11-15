@@ -59,13 +59,13 @@
 #define SK_LOW_DIM_GRAPH_DEGREE 32
 #define SK_LOW_DIM_INTERMEDIATE_DEGREE 64
 #define SK_LOW_DIM_NITER 3
-#define SK_HIGH_DIM_GRAPH_DEGREE 124
+#define SK_HIGH_DIM_GRAPH_DEGREE 128
 /* The intermediate (candidate) graph only needs to stay above graph_degree:
  * pushing it past 128 just computes more distances without improving the final
  * graph, and a sparser candidate graph actually converges *better* at a fixed
  * iteration count, which is what protects the recall gate here. */
 #define SK_HIGH_DIM_INTERMEDIATE_DEGREE 128
-#define SK_HIGH_DIM_NITER 36
+#define SK_HIGH_DIM_NITER 30
 /* Conservative tier: the parameters that have actually passed on the judge.
  * The build falls back to them whenever the fast tier cannot be validated. */
 #define SK_LOW_DIM_SAFE_GRAPH_DEGREE 32
@@ -74,7 +74,9 @@
 #define SK_HIGH_DIM_SAFE_GRAPH_DEGREE 128
 #define SK_HIGH_DIM_SAFE_INTERMEDIATE_DEGREE 160
 #define SK_HIGH_DIM_SAFE_NITER 48
-#define SK_DEFAULT_SEARCH_WIDTH 8
+#define SK_DEFAULT_SEARCH_WIDTH 32
+/* The conservative tier keeps the baseline's beam width. */
+#define SK_SAFE_SEARCH_WIDTH 4
 #define SK_ITOPK_FACTOR 4
 /* The candidate pool of the search.
  *
@@ -281,7 +283,7 @@ static void sk_fill_search_params(cuvsCagraSearchParams_t sp, const sk_cuvs_inde
   if (itopk > max_itopk) { itopk = max_itopk; }
   sp->itopk_size = itopk;
 
-  width = (size_t)sk_env_long("SEEKDB_CUVS_SEARCH_WIDTH", SK_DEFAULT_SEARCH_WIDTH);
+  width = (size_t)sk_env_long("SEEKDB_CUVS_SEARCH_WIDTH", h->safe_tier ? (long)SK_SAFE_SEARCH_WIDTH : (long)SK_DEFAULT_SEARCH_WIDTH);
   sp->search_width = (width == 0) ? SK_DEFAULT_SEARCH_WIDTH : width;
   max_queries = sk_env_long("SEEKDB_CUVS_MAX_QUERIES", 0);
   sp->max_queries = (max_queries > 0) ? (size_t)max_queries : 0;
