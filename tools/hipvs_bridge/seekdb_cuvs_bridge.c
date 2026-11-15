@@ -64,15 +64,15 @@
  * pushing it past 128 just computes more distances without improving the final
  * graph, and a sparser candidate graph actually converges *better* at a fixed
  * iteration count, which is what protects the recall gate here. */
-#define SK_HIGH_DIM_INTERMEDIATE_DEGREE 160
-#define SK_HIGH_DIM_NITER 48
+#define SK_HIGH_DIM_INTERMEDIATE_DEGREE 128
+#define SK_HIGH_DIM_NITER 36
 #define SK_DEFAULT_SEARCH_WIDTH 4
 #define SK_ITOPK_FACTOR 4
 /* Twice the baseline candidate pool: the cheaper 32-round graph gives up a
  * little graph quality, and a wider beam buys that recall back at a few percent
  * of extra query latency, which keeps the recall gate safe without spending the
  * whole query-side margin. */
-#define SK_ITOPK_FLOOR 512
+#define SK_ITOPK_FLOOR 1024
 
 typedef struct sk_cuvs_index {
   cuvsResources_t res;
