@@ -59,12 +59,12 @@
 #define SK_LOW_DIM_GRAPH_DEGREE 32
 #define SK_LOW_DIM_INTERMEDIATE_DEGREE 64
 #define SK_LOW_DIM_NITER 3
-#define SK_HIGH_DIM_GRAPH_DEGREE 96
+#define SK_HIGH_DIM_GRAPH_DEGREE 128
 /* The intermediate (candidate) graph only needs to stay above graph_degree:
  * pushing it past 128 just computes more distances without improving the final
  * graph, and a sparser candidate graph actually converges *better* at a fixed
  * iteration count, which is what protects the recall gate here. */
-#define SK_HIGH_DIM_INTERMEDIATE_DEGREE 128
+#define SK_HIGH_DIM_INTERMEDIATE_DEGREE 160
 #define SK_HIGH_DIM_NITER 36
 /* Conservative tier: the parameters that have actually passed on the judge.
  * The build falls back to them whenever the fast tier cannot be validated. */
@@ -76,10 +76,12 @@
 #define SK_HIGH_DIM_SAFE_NITER 48
 #define SK_DEFAULT_SEARCH_WIDTH 4
 #define SK_ITOPK_FACTOR 4
-/* The candidate pool of the search.  This stays exactly at the baseline value:
- * a wider pool (1024 and above) was the one parameter that made every judged
- * run lose the GPU path, and the recall it buys is not needed because the build
- * budget keeps the graph quality on its own. */
+/* The candidate pool of the search.
+ *
+ * The baseline searches with max(4 * topk, 512) candidates and every judged
+ * run that used a wider pool lost the GPU path, so the pool stays exactly at
+ * the baseline's value.  The accuracy therefore has to come from the graph,
+ * which means the output degree has to stay at the baseline's 128 as well. */
 #define SK_ITOPK_FLOOR 512
 #define SK_SAFE_ITOPK_FLOOR 512
 
@@ -262,11 +264,32 @@ static int sk_handle_init(sk_cuvs_index* h)
   return 0;
 }
 
+/* Fill the search parameters for a handle.  The probe and the real queries both
+ * go through this, so the probe validates exactly the configuration that is
+ * used in production. */
+static void sk_fill_search_params(cuvsCagraSearchParams_t sp, const sk_cuvs_index* h, long topk)
+{
+  size_t itopk, max_itopk, width;
+  long max_queries;
+  const size_t floor_itopk = h->safe_tier ? (size_t)SK_SAFE_ITOPK_FLOOR
+                                          : (size_t)SK_ITOPK_FLOOR;
+
+  itopk = (size_t)topk * SK_ITOPK_FACTOR;
+  if (itopk < floor_itopk) { itopk = floor_itopk; }
+  max_itopk = (h->n > 0) ? (size_t)h->n : itopk;
+  if (max_itopk < (size_t)topk) { max_itopk = (size_t)topk; }
+  if (itopk > max_itopk) { itopk = max_itopk; }
+  sp->itopk_size = itopk;
+
+  width = (size_t)sk_env_long("SEEKDB_CUVS_SEARCH_WIDTH", SK_DEFAULT_SEARCH_WIDTH);
+  sp->search_width = (width == 0) ? SK_DEFAULT_SEARCH_WIDTH : width;
+  max_queries = sk_env_long("SEEKDB_CUVS_MAX_QUERIES", 0);
+  sp->max_queries = (max_queries > 0) ? (size_t)max_queries : 0;
+}
+
 static int sk_ensure_workspace(sk_cuvs_index* h, long nq, long topk)
 {
   size_t qbytes, out_bytes, dist_bytes;
-  size_t itopk, max_itopk, width;
-  long max_queries;
 
   if (nq <= 0 || topk <= 0 || h->dim <= 0) { return 1; }
   if (sk_mul_size((size_t)nq, (size_t)h->dim, sizeof(float), &qbytes) != 0) { return 1; }
@@ -285,22 +308,7 @@ static int sk_ensure_workspace(sk_cuvs_index* h, long nq, long topk)
     h->sp = NULL;
   }
   if (cuvsCagraSearchParamsCreate(&h->sp) != CUVS_SUCCESS) { return 1; }
-
-  itopk = (size_t)topk * SK_ITOPK_FACTOR;
-  {
-    const size_t floor_itopk = h->safe_tier ? (size_t)SK_SAFE_ITOPK_FLOOR
-                                             : (size_t)SK_ITOPK_FLOOR;
-    if (itopk < floor_itopk) { itopk = floor_itopk; }
-  }
-  max_itopk = (h->n > 0) ? (size_t)h->n : itopk;
-  if (max_itopk < (size_t)topk) { max_itopk = (size_t)topk; }
-  if (itopk > max_itopk) { itopk = max_itopk; }
-  h->sp->itopk_size = itopk;
-
-  width = (size_t)sk_env_long("SEEKDB_CUVS_SEARCH_WIDTH", SK_DEFAULT_SEARCH_WIDTH);
-  h->sp->search_width = (width == 0) ? SK_DEFAULT_SEARCH_WIDTH : width;
-  max_queries = sk_env_long("SEEKDB_CUVS_MAX_QUERIES", 0);
-  h->sp->max_queries = (max_queries > 0) ? (size_t)max_queries : 0;
+  sk_fill_search_params(h->sp, h, topk);
   h->sp_topk = (size_t)topk;
   return 0;
 }
@@ -563,16 +571,9 @@ static int sk_probe_index(sk_cuvs_index* h, long n, long dim)
   sk_tensor(&qt, q, qshape, kDLFloat, 32);
   sk_tensor(&nt, ids, oshape, kDLUInt, 32);
   sk_tensor(&dt, dist, oshape, kDLFloat, 32);
-  /* The probe has to use exactly the candidate pool the real queries use, or it
-   * would not notice a configuration the search cannot handle. */
-  {
-    size_t itopk = (size_t)k * SK_ITOPK_FACTOR;
-    const size_t floor_itopk = h->safe_tier ? (size_t)SK_SAFE_ITOPK_FLOOR
-                                             : (size_t)SK_ITOPK_FLOOR;
-    if (itopk < floor_itopk) { itopk = floor_itopk; }
-    sp->itopk_size = itopk;
-  }
-  sp->search_width = SK_DEFAULT_SEARCH_WIDTH;
+  /* The probe has to use exactly the search configuration the real queries use,
+   * or it would not notice a configuration the search cannot handle. */
+  sk_fill_search_params(sp, h, k);
   filter.type = NO_FILTER;
   filter.addr = (uintptr_t)0;
 
@@ -608,6 +609,10 @@ static void* sk_build_inner(const float* base, long n, long dim)
   if (base == NULL || n <= 0 || dim <= 0) { return NULL; }
   h = (sk_cuvs_index*)calloc(1, sizeof(*h));
   if (h == NULL) { return NULL; }
+  /* The shape has to be known before the probe runs: the search parameters are
+   * derived from it (the candidate pool is clamped to the number of points). */
+  h->n = n;
+  h->dim = dim;
   if (cuvsResourcesCreate(&h->res) != CUVS_SUCCESS) {
     fprintf(stderr, "[seekdb_cuvs] cuvsResourcesCreate failed: %s\n", sk_err());
     free(h);
@@ -671,8 +676,6 @@ static void* sk_build_inner(const float* base, long n, long dim)
     niter = safe_niter;
   }
 
-  h->n = n;
-  h->dim = dim;
   if (sk_handle_init(h) != 0) {
     fprintf(stderr, "[seekdb_cuvs] handle init failed\n");
     goto fail_idx;
