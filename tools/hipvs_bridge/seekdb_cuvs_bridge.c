@@ -58,14 +58,14 @@
 #define SK_LOW_DIM_LIMIT 128
 #define SK_LOW_DIM_GRAPH_DEGREE 32
 #define SK_LOW_DIM_INTERMEDIATE_DEGREE 64
-#define SK_LOW_DIM_NITER 20
+#define SK_LOW_DIM_NITER 3
 #define SK_HIGH_DIM_GRAPH_DEGREE 128
 /* The intermediate (candidate) graph only needs to stay above graph_degree:
  * pushing it past 128 just computes more distances without improving the final
  * graph, and a sparser candidate graph actually converges *better* at a fixed
  * iteration count, which is what protects the recall gate here. */
-#define SK_HIGH_DIM_INTERMEDIATE_DEGREE 160
-#define SK_HIGH_DIM_NITER 48
+#define SK_HIGH_DIM_INTERMEDIATE_DEGREE 128
+#define SK_HIGH_DIM_NITER 36
 #define SK_DEFAULT_SEARCH_WIDTH 4
 #define SK_ITOPK_FACTOR 4
 /* Twice the baseline candidate pool: the cheaper 32-round graph gives up a
