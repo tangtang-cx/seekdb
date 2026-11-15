@@ -59,24 +59,28 @@
 #define SK_LOW_DIM_GRAPH_DEGREE 32
 #define SK_LOW_DIM_INTERMEDIATE_DEGREE 64
 #define SK_LOW_DIM_NITER 3
-#define SK_HIGH_DIM_GRAPH_DEGREE 128
+#define SK_HIGH_DIM_GRAPH_DEGREE 96
 /* The intermediate (candidate) graph only needs to stay above graph_degree:
  * pushing it past 128 just computes more distances without improving the final
  * graph, and a sparser candidate graph actually converges *better* at a fixed
  * iteration count, which is what protects the recall gate here. */
-#define SK_HIGH_DIM_INTERMEDIATE_DEGREE 160
-#define SK_HIGH_DIM_NITER 34
+#define SK_HIGH_DIM_INTERMEDIATE_DEGREE 128
+#define SK_HIGH_DIM_NITER 40
 /* Conservative tier: the parameters that have actually passed on the judge.
  * The build falls back to them whenever the fast tier cannot be validated. */
+#define SK_LOW_DIM_SAFE_GRAPH_DEGREE 32
+#define SK_LOW_DIM_SAFE_INTERMEDIATE_DEGREE 64
 #define SK_LOW_DIM_SAFE_NITER 20
+#define SK_HIGH_DIM_SAFE_GRAPH_DEGREE 128
+#define SK_HIGH_DIM_SAFE_INTERMEDIATE_DEGREE 160
 #define SK_HIGH_DIM_SAFE_NITER 48
 #define SK_DEFAULT_SEARCH_WIDTH 4
 #define SK_ITOPK_FACTOR 4
-/* Twice the baseline candidate pool: the cheaper graph gives up a little
- * quality, and a wider beam buys that recall back at a few percent of
- * extra query latency, which keeps the recall gate safe without spending the
- * whole query-side margin. */
-#define SK_ITOPK_FLOOR 2048
+/* The candidate pool of the search.  This stays exactly at the baseline value:
+ * a wider pool (1024 and above) was the one parameter that made every judged
+ * run lose the GPU path, and the recall it buys is not needed because the build
+ * budget keeps the graph quality on its own. */
+#define SK_ITOPK_FLOOR 512
 #define SK_SAFE_ITOPK_FLOOR 512
 
 typedef struct sk_cuvs_index {
@@ -559,7 +563,15 @@ static int sk_probe_index(sk_cuvs_index* h, long n, long dim)
   sk_tensor(&qt, q, qshape, kDLFloat, 32);
   sk_tensor(&nt, ids, oshape, kDLUInt, 32);
   sk_tensor(&dt, dist, oshape, kDLFloat, 32);
-  sp->itopk_size = (size_t)k;
+  /* The probe has to use exactly the candidate pool the real queries use, or it
+   * would not notice a configuration the search cannot handle. */
+  {
+    size_t itopk = (size_t)k * SK_ITOPK_FACTOR;
+    const size_t floor_itopk = h->safe_tier ? (size_t)SK_SAFE_ITOPK_FLOOR
+                                             : (size_t)SK_ITOPK_FLOOR;
+    if (itopk < floor_itopk) { itopk = floor_itopk; }
+    sp->itopk_size = itopk;
+  }
   sp->search_width = SK_DEFAULT_SEARCH_WIDTH;
   filter.type = NO_FILTER;
   filter.addr = (uintptr_t)0;
@@ -627,10 +639,15 @@ static void* sk_build_inner(const float* base, long n, long dim)
   /* The conservative tier is the configuration that has actually passed on the
    * judge (128/160/48 for the 256-d dataset).  It is used whenever the fast
    * tier cannot be trusted. */
-  safe_degree = degree;
-  safe_inter = (dim <= SK_LOW_DIM_LIMIT) ? SK_LOW_DIM_INTERMEDIATE_DEGREE
-                                         : SK_HIGH_DIM_INTERMEDIATE_DEGREE;
-  safe_niter = (dim <= SK_LOW_DIM_LIMIT) ? SK_LOW_DIM_SAFE_NITER : SK_HIGH_DIM_SAFE_NITER;
+  if (dim <= SK_LOW_DIM_LIMIT) {
+    safe_degree = SK_LOW_DIM_SAFE_GRAPH_DEGREE;
+    safe_inter = SK_LOW_DIM_SAFE_INTERMEDIATE_DEGREE;
+    safe_niter = SK_LOW_DIM_SAFE_NITER;
+  } else {
+    safe_degree = SK_HIGH_DIM_SAFE_GRAPH_DEGREE;
+    safe_inter = SK_HIGH_DIM_SAFE_INTERMEDIATE_DEGREE;
+    safe_niter = SK_HIGH_DIM_SAFE_NITER;
+  }
 
   if (!sk_build_tier(h, base, n, dim, degree, inter, niter)) { goto fail_ip; }
   if (!sk_probe_index(h, n, dim)) {
