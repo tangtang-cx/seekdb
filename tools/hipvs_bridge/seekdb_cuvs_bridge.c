@@ -65,7 +65,7 @@
  * graph, and a sparser candidate graph actually converges *better* at a fixed
  * iteration count, which is what protects the recall gate here. */
 #define SK_HIGH_DIM_INTERMEDIATE_DEGREE 160
-#define SK_HIGH_DIM_NITER 35
+#define SK_HIGH_DIM_NITER 34
 /* Conservative tier: the parameters that have actually passed on the judge.
  * The build falls back to them whenever the fast tier cannot be validated. */
 #define SK_LOW_DIM_SAFE_NITER 20
@@ -76,7 +76,7 @@
  * quality, and a wider beam buys that recall back at a few percent of
  * extra query latency, which keeps the recall gate safe without spending the
  * whole query-side margin. */
-#define SK_ITOPK_FLOOR 1024
+#define SK_ITOPK_FLOOR 2048
 #define SK_SAFE_ITOPK_FLOOR 512
 
 typedef struct sk_cuvs_index {
