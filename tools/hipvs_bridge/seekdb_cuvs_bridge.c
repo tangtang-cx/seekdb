@@ -64,8 +64,8 @@
  * pushing it past 128 just computes more distances without improving the final
  * graph, and a sparser candidate graph actually converges *better* at a fixed
  * iteration count, which is what protects the recall gate here. */
-#define SK_HIGH_DIM_INTERMEDIATE_DEGREE 144
-#define SK_HIGH_DIM_NITER 34
+#define SK_HIGH_DIM_INTERMEDIATE_DEGREE 160
+#define SK_HIGH_DIM_NITER 40
 /* Conservative tier: the parameters that have actually passed on the judge.
  * The build falls back to them whenever the fast tier cannot be validated. */
 #define SK_LOW_DIM_SAFE_GRAPH_DEGREE 32
