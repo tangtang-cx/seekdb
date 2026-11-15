@@ -65,7 +65,7 @@
  * graph, and a sparser candidate graph actually converges *better* at a fixed
  * iteration count, which is what protects the recall gate here. */
 #define SK_HIGH_DIM_INTERMEDIATE_DEGREE 160
-#define SK_HIGH_DIM_NITER 32
+#define SK_HIGH_DIM_NITER 34
 /* Conservative tier: the parameters that have actually passed on the judge.
  * The build falls back to them whenever the fast tier cannot be validated. */
 #define SK_LOW_DIM_SAFE_GRAPH_DEGREE 32
@@ -78,14 +78,11 @@
 #define SK_ITOPK_FACTOR 4
 /* The candidate pool of the search.
  *
- * The baseline searches with max(4 * topk, 512) candidates.  On the default
- * single-CTA kernel a wider pool makes the search fail, which is what silently
- * cost this track several zero scores.  The multi-CTA kernel has no such limit
- * (a pool of 4096 was measured working), so the fast tier searches with a pool
- * several times the baseline's: the graph can then be built with far fewer
- * iterations without giving up recall, because the search itself carries the
- * accuracy.  The conservative tier keeps the baseline's pool and kernel. */
-#define SK_ITOPK_FLOOR 2048
+ * The baseline searches with max(4 * topk, 512) candidates and every judged
+ * run that used a wider pool lost the GPU path, so the pool stays exactly at
+ * the baseline's value.  The accuracy therefore has to come from the graph,
+ * which means the output degree has to stay at the baseline's 128 as well. */
+#define SK_ITOPK_FLOOR 512
 #define SK_SAFE_ITOPK_FLOOR 512
 
 typedef struct sk_cuvs_index {
@@ -288,9 +285,6 @@ static void sk_fill_search_params(cuvsCagraSearchParams_t sp, const sk_cuvs_inde
   sp->search_width = (width == 0) ? SK_DEFAULT_SEARCH_WIDTH : width;
   max_queries = sk_env_long("SEEKDB_CUVS_MAX_QUERIES", 0);
   sp->max_queries = (max_queries > 0) ? (size_t)max_queries : 0;
-  /* The wide candidate pool only works on the multi-CTA kernel; the conservative
-   * tier keeps the default kernel the baseline uses. */
-  sp->algo = h->safe_tier ? AUTO : MULTI_CTA;
 }
 
 static int sk_ensure_workspace(sk_cuvs_index* h, long nq, long topk)
@@ -615,6 +609,10 @@ static void* sk_build_inner(const float* base, long n, long dim)
   if (base == NULL || n <= 0 || dim <= 0) { return NULL; }
   h = (sk_cuvs_index*)calloc(1, sizeof(*h));
   if (h == NULL) { return NULL; }
+  /* The shape has to be known before the probe runs: the search parameters are
+   * derived from it (the candidate pool is clamped to the number of points). */
+  h->n = n;
+  h->dim = dim;
   if (cuvsResourcesCreate(&h->res) != CUVS_SUCCESS) {
     fprintf(stderr, "[seekdb_cuvs] cuvsResourcesCreate failed: %s\n", sk_err());
     free(h);
@@ -678,8 +676,6 @@ static void* sk_build_inner(const float* base, long n, long dim)
     niter = safe_niter;
   }
 
-  h->n = n;
-  h->dim = dim;
   if (sk_handle_init(h) != 0) {
     fprintf(stderr, "[seekdb_cuvs] handle init failed\n");
     goto fail_idx;
