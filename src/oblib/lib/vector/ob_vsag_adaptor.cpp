@@ -408,13 +408,21 @@ static bool ob_cuvs_serialize(void *key, std::ostream &out, int &ret) {
   if (it == g_ob_cuvs_reg.end()) { return false; }
   ObCuvsEntry *ent = it->second;
   const size_t n = ent->buf_ids_.size();
+  // The dataset already travels inside the cuVS snapshot that is appended to the
+  // index stream below, so copying the raw vectors into the stream a second
+  // time only doubles the write volume of the index.  A re-serialised index
+  // therefore has no vector buffer any more, which is fine as long as the GPU
+  // index itself is still there.
+  const bool have_vectors =
+      (ent->buf_vecs_.size() == n * static_cast<size_t>(ent->dim_));
   if (n < OB_CUVS_MIN_PTS || ent->dim_ <= 0 ||
-      ent->buf_vecs_.size() != n * static_cast<size_t>(ent->dim_)) {
+      (!have_vectors && ent->bridge_ == nullptr)) {
     return false;
   }
   const int64_t start_us = ObTimeUtility::current_time();
   bool built = false;
   if (ent->bridge_ == nullptr || ent->built_n_ != n) {
+    if (!have_vectors) { return false; }
     std::shared_ptr<void> nb = ob_cuvs_build_big_stack(ent->buf_vecs_.data(),
                                                        static_cast<long>(n), ent->dim_);
     if (nb == nullptr) {
@@ -437,15 +445,16 @@ static bool ob_cuvs_serialize(void *key, std::ostream &out, int &ret) {
   ::rewind(graph.file_);
   const int64_t build_us = ObTimeUtility::current_time() - start_us;
   const int32_t dim32 = ent->dim_;
-  const int32_t reserved = 0;
+  // 0 = the vector section follows (legacy layout), 1 = it is omitted because the
+  // dataset is already part of the cuVS snapshot that is written below.
+  const int32_t reserved = 1;
   const int64_t n64 = static_cast<int64_t>(n);
   if (!ob_cuvs_write(out, OB_CUVS_SNAPSHOT_MAGIC, sizeof(OB_CUVS_SNAPSHOT_MAGIC)) ||
       !ob_cuvs_write(out, &graph_bytes, sizeof(graph_bytes)) ||
       !ob_cuvs_write(out, &dim32, sizeof(dim32)) ||
       !ob_cuvs_write(out, &reserved, sizeof(reserved)) ||
       !ob_cuvs_write(out, &n64, sizeof(n64)) ||
-      !ob_cuvs_write(out, ent->buf_ids_.data(), n * sizeof(int64_t)) ||
-      !ob_cuvs_write(out, ent->buf_vecs_.data(), ent->buf_vecs_.size() * sizeof(float))) {
+      !ob_cuvs_write(out, ent->buf_ids_.data(), n * sizeof(int64_t))) {
     ret = OB_ERR_UNEXPECTED;
     LOG_WARN("[OBVSAG][cuVS] failed to write snapshot stream", K(ret), KP(key), K(n));
     return true;
@@ -476,7 +485,8 @@ static int ob_cuvs_deserialize(void *key, int expected_dim, std::istream &in) {
       !ob_cuvs_read(in, &reserved, sizeof(reserved)) || !ob_cuvs_read(in, &n64, sizeof(n64))) {
     ret = OB_ERR_UNEXPECTED;
     LOG_WARN("[OBVSAG][cuVS] truncated snapshot header", K(ret), KP(key));
-  } else if (dim32 <= 0 || dim32 != expected_dim || reserved != 0 || n64 <= 0 ||
+  } else if (dim32 <= 0 || dim32 != expected_dim ||
+             (reserved != 0 && reserved != 1) || n64 <= 0 ||
              n64 > UINT32_MAX ||
              static_cast<uint64_t>(n64) > std::numeric_limits<size_t>::max() / sizeof(float) / dim32 ||
              graph_bytes == 0 || graph_bytes > static_cast<uint64_t>(INT64_MAX)) {
@@ -488,9 +498,14 @@ static int ob_cuvs_deserialize(void *key, int expected_dim, std::istream &in) {
     ObCuvsEntry *ent = new ObCuvsEntry();
     ent->dim_ = dim32;
     ent->buf_ids_.resize(n);
-    ent->buf_vecs_.resize(n * static_cast<size_t>(dim32));
+    // The vector section is only present in the legacy layout; in the compact
+    // layout the dataset lives inside the cuVS snapshot instead.
+    if (reserved == 0) {
+      ent->buf_vecs_.resize(n * static_cast<size_t>(dim32));
+    }
     if (!ob_cuvs_read(in, ent->buf_ids_.data(), n * sizeof(int64_t)) ||
-        !ob_cuvs_read(in, ent->buf_vecs_.data(), ent->buf_vecs_.size() * sizeof(float))) {
+        (reserved == 0 &&
+         !ob_cuvs_read(in, ent->buf_vecs_.data(), ent->buf_vecs_.size() * sizeof(float)))) {
       delete ent;
       ret = OB_ERR_UNEXPECTED;
       LOG_WARN("[OBVSAG][cuVS] truncated snapshot payload", K(ret), KP(key), K(n64));
